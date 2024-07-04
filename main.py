@@ -1,0 +1,378 @@
+import logging
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+import requests
+import os
+import json
+import gspread
+from dotenv import load_dotenv
+from datetime import datetime
+from oauth2client.service_account import ServiceAccountCredentials
+
+load_dotenv()
+
+# Telegram bot token
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+# Notion integration token
+NOTION_TOKEN = os.getenv('NOTION_TOKEN')
+# Notion database ID
+NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID')
+# Google Sheets credentials file
+GOOGLE_SHEETS_CREDENTIALS_FILE = 'path/to/credentials.json'
+# Google Sheets ID
+GOOGLE_SHEETS_ID = os.getenv('GOOGLE_SHEETS_ID')
+
+# Configure logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+MULTI_TAGS = {
+    "coach": {
+        "Alon": {
+            "id": "h\\I[",
+            "color": "brown",
+            "description": None
+        },
+        "Yair": {
+            "id": "oR:g",
+            "color": "blue",
+            "description": None
+        },
+        "Sagi": {
+            "id": "aw?v",
+            "color": "orange",
+            "description": None
+        },
+        "Shahar": {
+            "id": "dmi[",
+            "color": "yellow",
+            "description": None
+        }
+    },
+    "type": {
+        "Strength": {
+            "id": "cd94d728-3bb9-4895-bf9c-43ca23505b72",
+            "name": "Strength",
+            "color": "purple",
+            "description": None
+        },
+        "Skill": {
+            "id": "2b0b454b-6f37-4a5c-858f-e69732c58b5d",
+            "name": "Skill",
+            "color": "default",
+            "description": None
+        },
+        "Range": {
+            "id": "8d0ec6ef-fe7a-42d1-bb93-ae8e5a02d5ed",
+            "name": "Range",
+            "color": "yellow",
+            "description": None
+        },
+        "Handstand": {
+            "id": "63bcb531-ce54-40c5-a83b-48258c45f628",
+            "name": "Handstand",
+            "color": "orange",
+            "description": None
+        }
+    }
+}
+
+# States for conversation handler
+CHOOSING_TYPE, CHOOSING_COACH, GETTING_EXERCISES, COLLECTING_DESCRIPTIONS = range(4)
+
+# Dictionary to store ongoing sessions
+sessions = {}
+
+# Initialize Google Sheets client
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+#credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE, scope)
+#client = gspread.authorize(credentials)
+
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text('Welcome! Use /start to start logging a new lesson.')
+
+async def new_log(update: Update, context: CallbackContext) -> int:
+    user_id = update.message.from_user.id
+    sessions[user_id] = {'exercises': []}
+    await update.message.reply_text('Is it a "strength" or "skill" lesson?', reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']], one_time_keyboard=True))
+    return CHOOSING_TYPE
+
+async def choose_type(update: Update, context: CallbackContext) -> int:
+    user_id = update.message.from_user.id
+    lesson_type = update.message.text.lower()
+    sessions[user_id]['type'] = lesson_type
+    await update.message.reply_text('Who is the coach? Choose from: Shahar, Alon, Sagi, Yair', reply_markup=ReplyKeyboardMarkup([['Shahar', 'Alon', 'Sagi', 'Yair']], one_time_keyboard=True))
+    return CHOOSING_COACH
+
+async def choose_coach(update: Update, context: CallbackContext) -> int:
+    user_id = update.message.from_user.id
+    coach = update.message.text
+    sessions[user_id]['coach'] = coach
+    # Pull exercises from Google Sheets
+    #sheet = client.open_by_key(GOOGLE_SHEETS_ID).sheet1
+    if sessions[user_id]['type'] == 'Strength':
+          #      exercise_data = sheet.col_values(1)[1:10]  # A2:A10 TODO - change when sheets integration is ready!
+        exercise_data = ["notCrow"]
+        #exercise_data = ["notCrow", "Handstand", "Push up"]
+    else:
+        exercise_data = ["Handstand", "Pull up"]
+      #  exercise_data = sheet.col_values(2)[1:10]  # B2:B10
+    sessions[user_id]['exercises'] = [{'type': ex, 'description': ''} for ex in exercise_data]
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Starting {sessions[user_id]['type']} lesson with {coach}. Let's start with the exercises.")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{sessions[user_id]['exercises'][0]['type']} exercise - talk to me")
+    return COLLECTING_DESCRIPTIONS
+
+async def collect_description(update: Update, context: CallbackContext) -> int:
+    user_id = update.message.from_user.id
+    description = update.message.text
+    if description.lower() == "end":
+        await save_to_notion(user_id, context)
+        await update.message.reply_text('Lesson data added to Notion successfully!')
+        return ConversationHandler.END
+    else:
+        if 'current_exercise' not in sessions[user_id]:
+            sessions[user_id]['current_exercise'] = 0
+        current_exercise = sessions[user_id]['current_exercise']
+        sessions[user_id]['exercises'][current_exercise]['description'] = description
+        current_exercise += 1
+        if current_exercise < len(sessions[user_id]['exercises']):
+            sessions[user_id]['current_exercise'] = current_exercise
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
+        else:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text='All exercises collected. Type "end" to finish and save to Notion.')
+        return COLLECTING_DESCRIPTIONS
+
+
+async def stop(update: Update, context: CallbackContext) -> int:
+    user_id = update.message.from_user.id
+    if user_id in sessions:
+        del sessions[user_id]
+    await update.message.reply_text('Stopped the logging of the lesson.')
+    return ConversationHandler.END
+
+def testme():
+    data = json.loads(open('data', 'r').read())
+    coach = MULTI_TAGS["coach"][data["coach"]]
+    type = MULTI_TAGS["type"][data["type"]]
+    print(f"type: {type}")
+    exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}" for ex in data['exercises']])
+    date_str = datetime.now().isoformat()
+    print(f"CURR DATE: {date_str}")
+    url = 'https://api.notion.com/v1/pages'
+    headers = {
+        'Authorization': f'Bearer {NOTION_TOKEN}',
+        'Content-Type': 'application/json',
+        'Notion-Version': '2021-05-13'
+    }
+    payload = {
+    'parent': {'database_id': NOTION_DATABASE_ID},
+    "object": "page",
+    "last_edited_time": datetime.now().isoformat(),
+    "created_by": {
+        "object": "user",
+        "id": "33f7619f-8330-4fb9-9889-706bcd9b6a01"
+    },
+    "last_edited_by": {
+        "object": "user",
+        "id": "33f7619f-8330-4fb9-9889-706bcd9b6a01"
+    },
+    "cover": None,
+    "icon": None,
+    "parent": {
+        "type": "database_id",
+        "database_id": "0f05bd21-7122-4d20-af9b-b9b6cdaa2654"
+    },
+    "archived": False,
+    "in_trash": False,
+    "properties": {
+        "Coach": {
+            "id": "aYm;",
+            "type": "select",
+            "select": {
+                "color": coach["id"],
+                "name":data["coach"],
+                "color": coach["color"]
+            }
+        },
+        "Tags": {
+            "id": "bqtJ",
+            "type": "multi_select",
+            "multi_select": [
+                {
+                    "id": type["id"],
+                    "name":type["name"],
+                    "color": type["color"]
+                }
+            ]
+        },
+        "AI summary": {
+            "id": "n<mr",
+            "type": "rich_text",
+            "rich_text": []
+        },
+        "Date": {
+            "id": "}DM<",
+            "type": "date",
+            "date": {
+                "start": datetime.now().isoformat(),
+                "end": None,
+                "time_zone": None
+            }
+        },
+        "Name": {
+            "id": "title",
+            "type": "title",
+            "title": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "16",
+                        "link": None
+                    },
+                    "annotations": {
+                        "bold": False,
+                        "italic": False,
+                        "strikethrough": False,
+                        "underline": False,
+                        "code": False,
+                        "color": "default"
+                    },
+                    "plain_text": "10",
+                    "href": None
+                }
+            ]
+        }
+    },
+
+
+
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    print(response.json())
+    return response
+
+
+async def save_to_notion(user_id, context):
+    print("SAVIINGG")
+#    data = sessions[user_id]
+    data = json.loads(open('data', 'r').read())
+    # with open('data' , 'w') as myf:
+    #     myf.write(json.dumps(data))
+  #  del sessions[user_id]
+    exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}" for ex in data['exercises']])
+    date_str = datetime.now().isoformat()
+    url = 'https://api.notion.com/v1/pages'
+    headers = {
+        'Authorization': f'Bearer {NOTION_TOKEN}',
+        'Content-Type': 'application/json',
+        'Notion-Version': '2021-05-13'
+    }
+    payload = {
+        'parent': {'database_id': NOTION_DATABASE_ID},
+        'properties': {
+            "Name": {
+            "id": "title",
+            "type": "title",
+                        'title': [{'text': {'content': f"{data['type']} lesson with {data['coach']}", 'link': None}}],
+
+            "title": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "20",
+                        "link": {
+                            "url": None
+                        }
+                    },
+                    "annotations": {
+                        "bold": False,
+                        "italic": False,
+                        "strikethrough": False,
+                        "underline": False,
+                        "code": False,
+                        "color": "default"
+                    },
+                    "plain_text": "20",
+                    "href": False
+                }
+            ]
+        },
+       #     'Name': {'title': [{'text': {'content': f"{data['type']} lesson with {data['coach']}"}}]},
+            'Date': {'date': {'start': date_str}},
+            'Tags': {'multi_select': [{'name': data['type'].capitalize()}]},
+#            'AI summary': {'rich_text': [{'text': {'content': exercises_text}}]}, 
+        }
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    print(response.json())
+    return response
+
+
+def test():
+    url = 'https://api.notion.com/v1/pages/ce29b43defd7427cab35501edeed410c'
+    print(url)
+    headers = {
+        'Authorization': f'Bearer {NOTION_TOKEN}',
+        'Content-Type': 'application/json',
+        'Notion-Version': '2021-05-13'
+    }
+    response = requests.get(url, headers=headers)
+    with open('page', 'w') as f:
+        f.write(response.text)
+    print(response.json())
+
+
+async def append_block_to_page(page_id, user_id):
+    data = sessions[user_id]
+    exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}" for ex in data['exercises']])
+    url = f'https://api.notion.com/v1/blocks/{page_id}/children'
+    headers = {
+        'Authorization': f'Bearer {NOTION_TOKEN}',
+        'Content-Type': 'application/json',
+        'Notion-Version': '2021-05-13'
+    }
+    payload = {
+        'children': [
+            {
+                'object': 'block',
+                'type': 'paragraph',
+                'paragraph': {
+                    'rich_text': [
+                        {
+                            'type': 'text',
+                            'text': {
+                                'content': exercises_text
+                            },
+                            'annotations': {
+                                'bold': False
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+    requests.patch(url, headers=headers, json=payload)
+
+
+def main():
+    testme()
+    # test()
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', new_log)],
+        states={
+            CHOOSING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_type)],
+            CHOOSING_COACH: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_coach)],
+            COLLECTING_DESCRIPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_description)]
+        },
+        fallbacks=[CommandHandler('stop', stop)],
+    )
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stop", stop))
+    application.run_polling()
+    save_to_notion('a', 'b')
+
+if __name__ == '__main__':
+    main()
+
