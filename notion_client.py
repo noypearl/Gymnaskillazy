@@ -15,7 +15,7 @@ class NotionClient:
         }
         self.logger = logging.getLogger(__name__)
 
-    async def save_to_notion(self, user_id, sessions):
+    async def save_to_notion(self, user_id,lesson_index, sessions):
         coach = MULTI_TAGS["coach"][sessions[user_id]["coach"]]
         type_tag = MULTI_TAGS["type"][sessions[user_id]["type"].capitalize()]
         user_id = NOTION_USER_ID # TODO - get user ID from notion connection
@@ -78,7 +78,7 @@ class NotionClient:
                         {
                             "type": "text",
                             "text": {
-                                "content": "Lesson Log",
+                                "content": str(lesson_index),
                                 "link": None
                             },
                             "annotations": {
@@ -89,7 +89,7 @@ class NotionClient:
                                 "code": False,
                                 "color": "default"
                             },
-                            "plain_text": "Lesson Log",
+                            "plain_text": str(lesson_index),
                             "href": None
                         }
                     ]

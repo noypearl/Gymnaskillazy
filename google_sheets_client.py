@@ -17,9 +17,17 @@ class GoogleSheetsClient:
         current_month = datetime.now().strftime('%B')
         return self.client.open_by_key(self.sheet_id).worksheet(current_month)
 
+    def get_general_sheet(self):
+        return self.client.open_by_key(self.sheet_id).worksheet("General")
+
     def get_exercises(self, lesson_type):
         sheet = self.get_current_sheet()
         if lesson_type == 'strength':
             return sheet.col_values(1)[1:10]  # A2:A10
         else:
             return sheet.col_values(2)[1:10]  # B2:B10
+
+    def get_new_lesson_index(self):
+        general_sheet = self.get_general_sheet()
+        lesson_index = int(general_sheet.cell(2,1).value)
+        return lesson_index

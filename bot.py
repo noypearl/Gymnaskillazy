@@ -3,7 +3,7 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from google_sheets_client import GoogleSheetsClient
 from notion_client import NotionClient
-from constants import EXPLANATIONS_TEXT, MULTI_TAGS
+from constants import EXPLANATIONS_TEXT, TELEGRAM_USER_ID
 
 class TelegramBot:
     CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION = range(5)
@@ -38,7 +38,13 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("status", self.view_status))
 
     async def start(self, update: Update, context: CallbackContext) -> None:
-        await update.message.reply_text('Welcome! Use /start to start logging a new lesson.')
+        user_id = update.message.from_user.id
+        print(f" USER ID: { user_id}")
+        if user_id != TELEGRAM_USER_ID:
+            await update.message.reply_text("Access denied. You are not authorized to use this bot.")
+            return
+        await update.message.reply_text('Welcome! Use /start to start '
+                                        'logging a new lesson. 💪')
 
     async def view_status(self, update: Update, context: CallbackContext) -> None:
         user_id = update.message.from_user.id
@@ -63,6 +69,7 @@ class TelegramBot:
         user_id = update.message.from_user.id
         self.logger.info(f"User ID: {user_id}")
         self.sessions[user_id] = {'exercises': []}
+        self.lesson_index = self.google_sheets_client.get_new_lesson_index()
         await update.message.reply_text('Is it a "Strength" or "Skill" lesson?',
                                         reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']], one_time_keyboard=True))
         return self.CHOOSING_TYPE
@@ -125,6 +132,7 @@ class TelegramBot:
         if description.lower() == "end":
             await update.message.reply_text('Updating...')
             page_id = await self.notion_client.save_to_notion(user_id,
+                                                              self.lesson_index,
                                                               self.sessions)
             await self.notion_client.append_block_to_page(page_id, self.sessions[user_id])
             await self.notify_lesson_logged(update, user_id)
@@ -172,8 +180,8 @@ class TelegramBot:
             await update.message.reply_text('All exercises collected. Type "end" to finish and save to Notion.')
         else:
             self.sessions[user_id]['current_exercise'] = current_exercise
-            await update.message.reply_text(f"{self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.")
             await update.message.reply_text(EXPLANATIONS_TEXT)
+            await update.message.reply_text(f"{self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.")
 
     async def add_description(self, update: Update, user_id, description):
         if 'current_exercise' not in self.sessions[user_id]:
