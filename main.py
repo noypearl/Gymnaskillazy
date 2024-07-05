@@ -25,6 +25,11 @@ GOOGLE_SHEETS_ID = os.getenv('GOOGLE_SHEETS_ID')
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
+EXPLANATIONS_TEXT = ("In every step you can write "
+                     "'skip' - skip logging that specific exercise\n"
+                     "'add' - add a custom exercise\n"
+                     "'end' - finish logging - save to notion\n")
+
 MULTI_TAGS = {
     "coach": {
         "Alon": {
@@ -124,7 +129,9 @@ async def choose_coach(update: Update, context: CallbackContext) -> int:
       #  exercise_data = sheet.col_values(2)[1:10]  # B2:B10
     sessions[user_id]['exercises'] = [{'type': ex, 'description': ''} for ex in exercise_data]
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Starting {sessions[user_id]['type']} lesson with {coach}. Let's start with the exercises.")
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{sessions[user_id]['exercises'][0]['type']} exercise - talk to me")
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=f"{sessions[user_id]['exercises'][0]['type']} - talk to me.")
+    await context.bot.send_message(chat_id=update.effective_chat.id,text=EXPLANATIONS_TEXT)
     return COLLECTING_DESCRIPTIONS
 
 async def add_custom_exercise(update: Update, context: CallbackContext) -> int:  # New function to handle custom exercise title
@@ -149,6 +156,7 @@ async def add_custom_description(update: Update, context: CallbackContext) -> in
         sessions[user_id]['current_exercise'] = 0
     current_exercise = sessions[user_id]['current_exercise']
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
+    await context.bot.send_message(chat_id=update.effective_chat.id,text=EXPLANATIONS_TEXT)
     return COLLECTING_DESCRIPTIONS
 
 
@@ -182,7 +190,10 @@ async def collect_description(update: Update, context: CallbackContext) -> int:
             sessions[user_id]['current_exercise'] = current_exercise
             await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text='All exercises collected. Type "end" to finish and save to Notion.')
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                                           text="All exercises collected. \n"
+                                                "Type 'end' to finish and "
+                                                "save to Notion \nor 'add' - to add a custom exercise")
         return COLLECTING_DESCRIPTIONS
 
 
@@ -462,7 +473,6 @@ def main():
             # New state for custom exercise title
             ADDING_CUSTOM_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_description)]
             # New state for custom exercise description
-
         },
         fallbacks=[CommandHandler('stop', stop)],
     )
