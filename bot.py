@@ -1,15 +1,20 @@
+import json
 import logging
+from openai import OpenAI
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from google_sheets_client import GoogleSheetsClient
 from notion_client import NotionClient
-from constants import EXPLANATIONS_TEXT, TELEGRAM_USER_ID
+from constants import EXPLANATIONS_TEXT, TELEGRAM_USER_ID, CHATGPT_PROMPT
 
 class TelegramBot:
     CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(7)
 
-    def __init__(self, telegram_token, notion_token, notion_database_id, google_sheets_credentials_file, google_sheets_id):
+    def __init__(self, telegram_token, notion_token, notion_database_id,
+                 google_sheets_credentials_file, google_sheets_id,
+                 openapi_token):
         self.telegram_token = telegram_token
+        self.openapi_token = openapi_token
         self.google_sheets_client = GoogleSheetsClient(google_sheets_credentials_file, google_sheets_id)
         self.notion_client = NotionClient(notion_token, notion_database_id)
         self.sessions = {}
@@ -73,12 +78,28 @@ class TelegramBot:
                                            text=f"Additional Question: {self.additional_questions[self.current_question_index]}")
             return self.COLLECTING_ADDITIONAL_INFO
         else:
-            await update.message.reply_text('Updating...')
-            page_id = await self.notion_client.save_to_notion(user_id, self.lesson_index, self.sessions)
+            await update.message.reply_text('Hurray! Got all the data!')
+            await update.message.reply_text('Now using AI tricks to '
+                                            'generate a nice title...')
+            client = OpenAI(api_key=self.openapi_token)
+            response = client.chat.completions.create(
+                model="gpt-4",  # Use "gpt-4" for chat-based model
+                messages=[
+                    {"role": "system", "content": CHATGPT_PROMPT},
+                    {"role": "user", "content": str(self.sessions)}
+                ],
+                max_tokens=30,
+                n=1,
+                stop=None,
+                temperature=0.7
+            )
+            new_title = response.choices[0].message.content
+            self.sessions[user_id]['title'] = new_title
+            page_id = await self.notion_client.save_to_notion(user_id, new_title ,
+                                                              self.lesson_index, self.sessions)
             await self.notion_client.append_block_to_page(page_id, self.sessions[user_id])
             await self.notify_lesson_logged(update, user_id)
             return ConversationHandler.END
-
 
     async def view_status(self, update: Update, context: CallbackContext) -> None:
         user_id = update.message.from_user.id
@@ -164,6 +185,10 @@ class TelegramBot:
         user_id = update.message.from_user.id
         description = update.message.text
         if description.lower() == "end":
+            # await update.message.reply_text('Generating title and updating...')
+            # title = await self.notion_client.generate_lesson_title(self.sessions[user_id]['exercises'])
+            # self.sessions[user_id]['title'] = title
+
             await update.message.reply_text("All exercises were collected. "
                                             "Now, "
                                             "let's answer a few additional "
@@ -192,19 +217,22 @@ class TelegramBot:
             if exercise['description']:
                 status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
 
+        status_message += "\n"
+
         if 'custom_exercises' in log_data:
-            status_message += "\nCustom Exercises:\n"
+            status_message += "\n\nCustom Exercises:\n"
             for idx, exercise in enumerate(log_data['custom_exercises']):
                 if exercise['description']:
                     status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
+            status_message += "\n"
 
         if 'additional_info' in log_data:
             for item in log_data['additional_info']:
                 status_message += f"{item['question']}: {item['answer']}\n"
 
         await update.message.reply_text(status_message)
-        await update.message.reply_text('Lesson data was added to Notion '
-                                        'successfully!')
+        await update.message.reply_text(f"A whole lesson is added to Notion: \n"
+                                        f"{self.sessions[user_id]['title']}")
 
     async def skip_exercise(self, update: Update, user_id):
         if 'current_exercise' not in self.sessions[user_id]:
