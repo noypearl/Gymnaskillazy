@@ -7,6 +7,7 @@ import json
 import gspread
 from dotenv import load_dotenv
 from datetime import datetime
+from constants import EXPLANATIONS_TEXT, MULTI_TAGS, USER_ID
 from oauth2client.service_account import ServiceAccountCredentials
 
 load_dotenv()
@@ -25,66 +26,6 @@ GOOGLE_SHEETS_ID = os.getenv('GOOGLE_SHEETS_ID')
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-EXPLANATIONS_TEXT = ("In every step you can write "
-                     "'skip' - skip logging that specific exercise\n"
-                     "'add' - add a custom exercise\n"
-                     "'end' - finish logging - save to notion\n")
-
-MULTI_TAGS = {
-    "coach": {
-        "Alon": {
-            "id": "h\\I[",
-            "color": "brown",
-            "name": "Alon",
-            "description": None
-        },
-        "Yair": {
-            "id": "oR:g",
-            "name": "Yair",
-            "color": "blue",
-            "description": None
-        },
-        "Sagi": {
-            "id": "aw?v",
-            "name": "Sagi",
-            "color": "orange",
-            "description": None
-        },
-        "Shahar": {
-            "id": "dmi[",
-            "name": "Shahar",
-            "color": "orange",
-            "color": "yellow",
-            "description": None
-        }
-    },
-    "type": {
-        "Strength": {
-            "id": "cd94d728-3bb9-4895-bf9c-43ca23505b72",
-            "name": "Strength",
-            "color": "purple",
-            "description": None
-        },
-        "Skill": {
-            "id": "2b0b454b-6f37-4a5c-858f-e69732c58b5d",
-            "name": "Strength",
-            "color": "green",
-            "description": None
-        },
-        "Range": {
-            "id": "8d0ec6ef-fe7a-42d1-bb93-ae8e5a02d5ed",
-            "name": "Range",
-            "color": "yellow",
-            "description": None
-        },
-        "Handstand": {
-            "id": "63bcb531-ce54-40c5-a83b-48258c45f628",
-            "name": "Handstand",
-            "color": "orange",
-            "description": None
-        }
-    }
-}
 
 # States for conversation handler
 CHOOSING_TYPE, CHOOSING_COACH, GETTING_EXERCISES, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION = range(6)
@@ -100,8 +41,28 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 async def start(update: Update, context: CallbackContext) -> None:
     await update.message.reply_text('Welcome! Use /start to start logging a new lesson.')
 
+async def view_status(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    if user_id not in sessions:
+        await update.message.reply_text("No active session found. Use /start to begin logging a new lesson.")
+        return
+
+    log_data = sessions[user_id]
+    status_message = f"Current log data:\n\nType: {log_data['type'].capitalize()}\nCoach: {log_data['coach']}\nExercises:\n"
+
+    for idx, exercise in enumerate(log_data['exercises']):
+        status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
+
+    if 'custom_exercises' in log_data:
+        status_message += "\nCustom Exercises:\n"
+        for idx, exercise in enumerate(log_data['custom_exercises']):
+            status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
+
+    await update.message.reply_text(status_message)
+
 async def new_log(update: Update, context: CallbackContext) -> int:
     user_id = update.message.from_user.id
+    print(f"User ID: {user_id}")
     sessions[user_id] = {'exercises': []}
     await update.message.reply_text('Is it a "Strength" or "Skill" lesson?',
                                     reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']], one_time_keyboard=True))
@@ -125,7 +86,7 @@ async def choose_coach(update: Update, context: CallbackContext) -> int:
         exercise_data = ["notCrow"]
         #exercise_data = ["notCrow", "Handstand", "Push up"]
     else:
-        exercise_data = ["Handstand", "Pull up"]
+        exercise_data = ["Handstand", "Crow"]
       #  exercise_data = sheet.col_values(2)[1:10]  # B2:B10
     sessions[user_id]['exercises'] = [{'type': ex, 'description': ''} for ex in exercise_data]
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Starting {sessions[user_id]['type']} lesson with {coach}. Let's start with the exercises.")
@@ -164,9 +125,28 @@ async def collect_description(update: Update, context: CallbackContext) -> int:
     user_id = update.message.from_user.id
     description = update.message.text
     if description.lower() == "end":
-        await save_to_notion(user_id, context)
+        await update.message.reply_text('Updating...')
+        page_id = await save_to_notion(user_id, context)
+        await append_block_to_page(page_id, user_id)  # Updated: Appending blocks to the Notion page
+
+        # Notify the user of what was logged
+        log_data = sessions[user_id]
+        status_message = (f"Lesson completed! NOICE!! \n"
+                          f"Logged lesson data:\n\nType:"
+                          f" {log_data['type'].capitalize()}\nCoach: "
+                          f"{log_data['coach']}\n\n\nExercises:\n")
+
+        for idx, exercise in enumerate(log_data['exercises']):
+            status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
+
+        if 'custom_exercises' in log_data:
+            status_message += "\nCustom Exercises:\n"
+            for idx, exercise in enumerate(log_data['custom_exercises']):
+                status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
+        await update.message.reply_text(status_message)
         await update.message.reply_text('Lesson data added to Notion successfully!')
         return ConversationHandler.END
+
     elif description.lower() == "skip":
         if 'current_exercise' not in sessions[user_id]:
             sessions[user_id]['current_exercise'] = 0
@@ -282,7 +262,7 @@ def testme():
                 {
                     "type": "text",
                     "text": {
-                        "content": "222",
+                        "content": "LOLLL",
                         "link": None
                     },
                     "annotations": {
@@ -388,7 +368,7 @@ async def save_to_notion(user_id, context):
                 {
                     "type": "text",
                     "text": {
-                        "content": "222",
+                        "content": "LOL",
                         "link": None
                     },
                     "annotations": {
@@ -408,8 +388,9 @@ async def save_to_notion(user_id, context):
             }        
     
     response = requests.post(url, headers=headers, json=payload)
-    print(response.json())
-    return response
+    response_data = response.json()
+    print(response_data)
+    return response_data["id"]
 
 
 def test():
@@ -425,19 +406,44 @@ def test():
         f.write(response.text)
     print(response.json())
 
-
+# async def append_block_to_page(page_id, user_id):
 async def append_block_to_page(page_id, user_id):
     data = sessions[user_id]
-    exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}" for ex in data['exercises']])
-    url = f'https://api.notion.com/v1/blocks/{page_id}/children'
-    headers = {
-        'Authorization': f'Bearer {NOTION_TOKEN}',
-        'Content-Type': 'application/json',
-        'Notion-Version': '2021-05-13'
-    }
-    payload = {
-        'children': [
-            {
+    # exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}" for ex in data['exercises']])
+    # with open('page-data', 'w') as d:
+    #     d.write(json.dumps(data))
+    print(f"APPENDING!")
+    # data = json.loads(open('page-data', 'r').read())
+    blocks = []
+
+    for exercise in data['exercises']:
+        blocks.append({
+            'object': 'block',
+            'type': 'paragraph',
+            'paragraph': {
+                'rich_text': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': exercise['type'],
+                        },
+                        'annotations': {
+                            'bold': True
+                        }
+                    },
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': f"\n{exercise['description']}\n"
+                        }
+                    }
+                ]
+            }
+        })
+
+    if 'custom_exercises' in data:
+        for custom_exercise in data['custom_exercises']:
+            blocks.append({
                 'object': 'block',
                 'type': 'paragraph',
                 'paragraph': {
@@ -445,21 +451,44 @@ async def append_block_to_page(page_id, user_id):
                         {
                             'type': 'text',
                             'text': {
-                                'content': exercises_text
+                                'content': custom_exercise['type'],
                             },
                             'annotations': {
-                                'bold': False
+                                'bold': True
+                            }
+                        },
+                        {
+                            'type': 'text',
+                            'text': {
+                                'content': f"\n"
+                                           f""
+                                           f"{custom_exercise['description']}\n"
                             }
                         }
                     ]
                 }
-            }
-        ]
+            })
+
+    url = f'https://api.notion.com/v1/blocks/{page_id}/children'
+    headers = {
+        'Authorization': f'Bearer {NOTION_TOKEN}',
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28'  # Ensure you're using the latest version
     }
-    requests.patch(url, headers=headers, json=payload)
+    payload = {
+        'children': blocks
+    }
+
+    response = requests.patch(url, headers=headers, json=payload)
+    response_data = response.json()
+    print(response_data)
+    response.raise_for_status()  # Raise an error for bad responses
+    return response_data
+
 
 
 def main():
+    # append_block_to_page("3a759b0b439f417b847fc20e3d6e0306",USER_ID)
     #testme()
     #test()
     application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -470,16 +499,16 @@ def main():
             CHOOSING_COACH: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_coach)],
             COLLECTING_DESCRIPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_description)],
             ADDING_CUSTOM_EXERCISE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_exercise)],
-            # New state for custom exercise title
             ADDING_CUSTOM_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_description)]
-            # New state for custom exercise description
         },
         fallbacks=[CommandHandler('stop', stop)],
     )
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(CommandHandler("status", view_status))  # Add this line
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
