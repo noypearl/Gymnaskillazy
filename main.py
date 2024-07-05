@@ -30,20 +30,25 @@ MULTI_TAGS = {
         "Alon": {
             "id": "h\\I[",
             "color": "brown",
+            "name": "Alon",
             "description": None
         },
         "Yair": {
             "id": "oR:g",
+            "name": "Yair",
             "color": "blue",
             "description": None
         },
         "Sagi": {
             "id": "aw?v",
+            "name": "Sagi",
             "color": "orange",
             "description": None
         },
         "Shahar": {
             "id": "dmi[",
+            "name": "Shahar",
+            "color": "orange",
             "color": "yellow",
             "description": None
         }
@@ -57,8 +62,8 @@ MULTI_TAGS = {
         },
         "Skill": {
             "id": "2b0b454b-6f37-4a5c-858f-e69732c58b5d",
-            "name": "Skill",
-            "color": "default",
+            "name": "Strength",
+            "color": "green",
             "description": None
         },
         "Range": {
@@ -93,7 +98,8 @@ async def start(update: Update, context: CallbackContext) -> None:
 async def new_log(update: Update, context: CallbackContext) -> int:
     user_id = update.message.from_user.id
     sessions[user_id] = {'exercises': []}
-    await update.message.reply_text('Is it a "strength" or "skill" lesson?', reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']], one_time_keyboard=True))
+    await update.message.reply_text('Is it a "Strength" or "Skill" lesson?',
+                                    reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']], one_time_keyboard=True))
     return CHOOSING_TYPE
 
 async def choose_type(update: Update, context: CallbackContext) -> int:
@@ -128,6 +134,16 @@ async def collect_description(update: Update, context: CallbackContext) -> int:
         await save_to_notion(user_id, context)
         await update.message.reply_text('Lesson data added to Notion successfully!')
         return ConversationHandler.END
+    elif description.lower() == "skip":
+        if 'current_exercise' not in sessions[user_id]:
+            sessions[user_id]['current_exercise'] = 0
+        current_exercise = sessions[user_id]['current_exercise']
+        current_exercise += 1
+        if current_exercise == len(sessions[user_id]['exercises']):
+            sessions[user_id]['current_exercise'] = current_exercise
+            await context.bot.send_message(chat_id=update.effective_chat.id, text='exercise was skipped.')
+            await context.bot.send_message(chat_id=update.effective_chat.id, text='All exercises collected. Type "end" to finish and save to Notion.')
+        return COLLECTING_DESCRIPTIONS
     else:
         if 'current_exercise' not in sessions[user_id]:
             sessions[user_id]['current_exercise'] = 0
@@ -154,6 +170,7 @@ def testme():
     coach = MULTI_TAGS["coach"][data["coach"]]
     type = MULTI_TAGS["type"][data["type"]]
     print(f"type: {type}")
+    print(f"coach: {coach} {data['coach']} {coach['id']}")
     exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}" for ex in data['exercises']])
     date_str = datetime.now().isoformat()
     print(f"CURR DATE: {date_str}")
@@ -188,9 +205,10 @@ def testme():
             "id": "aYm;",
             "type": "select",
             "select": {
-                "color": coach["id"],
-                "name":data["coach"],
-                "color": coach["color"]
+                "id": coach["id"],
+                "name":data['coach'],
+                "color": coach["color"],
+                "description": None
             }
         },
         "Tags": {
@@ -225,7 +243,7 @@ def testme():
                 {
                     "type": "text",
                     "text": {
-                        "content": "16",
+                        "content": "222",
                         "link": None
                     },
                     "annotations": {
@@ -252,13 +270,15 @@ def testme():
 
 
 async def save_to_notion(user_id, context):
-    print("SAVIINGG")
+    coach = MULTI_TAGS["coach"][sessions[user_id]["coach"]]
+    type = MULTI_TAGS["type"][sessions[user_id]["type"].capitalize()]
+    print(f"coach: {coach}, type: {type}")
 #    data = sessions[user_id]
-    data = json.loads(open('data', 'r').read())
+#    data = json.loads(open('data', 'r').read())
     # with open('data' , 'w') as myf:
     #     myf.write(json.dumps(data))
-  #  del sessions[user_id]
-    exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}" for ex in data['exercises']])
+#    exercises_text = "\n\n".join([f"**{ex['type']}**\n{ex['description']}"
+    #    for ex in sessions[user_id]['exercises']])
     date_str = datetime.now().isoformat()
     url = 'https://api.notion.com/v1/pages'
     headers = {
@@ -267,21 +287,70 @@ async def save_to_notion(user_id, context):
         'Notion-Version': '2021-05-13'
     }
     payload = {
-        'parent': {'database_id': NOTION_DATABASE_ID},
-        'properties': {
-            "Name": {
+    'parent': {'database_id': NOTION_DATABASE_ID},
+    "object": "page",
+    "last_edited_time": datetime.now().isoformat(),
+    "created_by": {
+        "object": "user",
+        "id": "33f7619f-8330-4fb9-9889-706bcd9b6a01"
+    },
+    "last_edited_by": {
+        "object": "user",
+        "id": "33f7619f-8330-4fb9-9889-706bcd9b6a01"
+    },
+    "cover": None,
+    "icon": None,
+    "parent": {
+        "type": "database_id",
+        "database_id": "0f05bd21-7122-4d20-af9b-b9b6cdaa2654"
+    },
+    "archived": False,
+    "in_trash": False,
+    "properties": {
+        "Coach": {
+            "id": "aYm;",
+            "type": "select",
+            "select": {
+                "id": coach["id"],
+                "name":coach["name"],
+                "color": coach["color"],
+                "description": None
+            }
+        },
+        "Tags": {
+            "id": "bqtJ",
+            "type": "multi_select",
+            "multi_select": [
+                {
+                    "id": type["id"],
+                    "name":type["name"],
+                    "color": type["color"]
+                }
+            ]
+        },
+        "AI summary": {
+            "id": "n<mr",
+            "type": "rich_text",
+            "rich_text": []
+        },
+        "Date": {
+            "id": "}DM<",
+            "type": "date",
+            "date": {
+                "start": datetime.now().isoformat(),
+                "end": None,
+                "time_zone": None
+            }
+        },
+        "Name": {
             "id": "title",
             "type": "title",
-                        'title': [{'text': {'content': f"{data['type']} lesson with {data['coach']}", 'link': None}}],
-
             "title": [
                 {
                     "type": "text",
                     "text": {
-                        "content": "20",
-                        "link": {
-                            "url": None
-                        }
+                        "content": "222",
+                        "link": None
                     },
                     "annotations": {
                         "bold": False,
@@ -291,24 +360,21 @@ async def save_to_notion(user_id, context):
                         "code": False,
                         "color": "default"
                     },
-                    "plain_text": "20",
-                    "href": False
+                    "plain_text": "10",
+                    "href": None
                 }
             ]
-        },
-       #     'Name': {'title': [{'text': {'content': f"{data['type']} lesson with {data['coach']}"}}]},
-            'Date': {'date': {'start': date_str}},
-            'Tags': {'multi_select': [{'name': data['type'].capitalize()}]},
-#            'AI summary': {'rich_text': [{'text': {'content': exercises_text}}]}, 
         }
-    }
+    },
+            }        
+    
     response = requests.post(url, headers=headers, json=payload)
     print(response.json())
     return response
 
 
 def test():
-    url = 'https://api.notion.com/v1/pages/ce29b43defd7427cab35501edeed410c'
+    url = 'https://api.notion.com/v1/pages/f230b3b1e5c0410aa7f6d174f2cdabec'
     print(url)
     headers = {
         'Authorization': f'Bearer {NOTION_TOKEN}',
@@ -355,8 +421,8 @@ async def append_block_to_page(page_id, user_id):
 
 
 def main():
-    testme()
-    # test()
+    #testme()
+    #test()
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', new_log)],
@@ -371,7 +437,6 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stop", stop))
     application.run_polling()
-    save_to_notion('a', 'b')
 
 if __name__ == '__main__':
     main()
