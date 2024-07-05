@@ -2,6 +2,7 @@ EXPLANATIONS_TEXT = ("In every step you can write "
                      "'skip' - skip logging that specific exercise\n"
                      "'add' - add a custom exercise\n"
                      "'end' - finish logging - save to notion\n")
+
 MULTI_TAGS = {
     "coach": {
         "Alon": {
@@ -25,7 +26,6 @@ MULTI_TAGS = {
         "Shahar": {
             "id": "dmi[",
             "name": "Shahar",
-            "color": "orange",
             "color": "yellow",
             "description": None
         }
@@ -39,7 +39,7 @@ MULTI_TAGS = {
         },
         "Skill": {
             "id": "2b0b454b-6f37-4a5c-858f-e69732c58b5d",
-            "name": "Strength",
+            "name": "Skill",
             "color": "green",
             "description": None
         },
@@ -58,20 +58,5 @@ MULTI_TAGS = {
     }
 }
 
-EXERCISES = {
-    "July" :{
-        "Strength": [
-           "Handstand",
-            "Crow",
-        ],
-        "Skill": [
-            "Pull Up",
-            "ST.Stance"
-        ]
-    },
-    "August": {
-        "Hello"
-    }
-}
-
-USER_ID = 856026537
+NOTION_USER_ID="a29ff9e2-2d5c-4ed1-a4e9-de7ab0e08918"
+TELEGRAM_USER_ID="856026537"
