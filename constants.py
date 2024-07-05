@@ -58,4 +58,20 @@ MULTI_TAGS = {
     }
 }
 
+EXERCISES = {
+    "July" :{
+        "Strength": [
+           "Handstand",
+            "Crow",
+        ],
+        "Skill": [
+            "Pull Up",
+            "ST.Stance"
+        ]
+    },
+    "August": {
+        "Hello"
+    }
+}
+
 USER_ID = 856026537

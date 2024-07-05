@@ -19,13 +19,12 @@ NOTION_TOKEN = os.getenv('NOTION_TOKEN')
 # Notion database ID
 NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID')
 # Google Sheets credentials file
-GOOGLE_SHEETS_CREDENTIALS_FILE = 'path/to/credentials.json'
+GOOGLE_SHEETS_CREDENTIALS_FILE = 'credentials.json'
 # Google Sheets ID
 GOOGLE_SHEETS_ID = os.getenv('GOOGLE_SHEETS_ID')
 
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
 
 # States for conversation handler
 CHOOSING_TYPE, CHOOSING_COACH, GETTING_EXERCISES, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION = range(6)
@@ -33,10 +32,23 @@ CHOOSING_TYPE, CHOOSING_COACH, GETTING_EXERCISES, COLLECTING_DESCRIPTIONS, ADDIN
 # Dictionary to store ongoing sessions
 sessions = {}
 
-# Initialize Google Sheets client
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-#credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE, scope)
-#client = gspread.authorize(credentials)
+
+def get_gcloud_connection():
+    # Initialize Google Sheets client
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE, scope)
+    client = gspread.authorize(credentials)
+    return client
+
+def get_current_sheet(client):
+    # Get the current month
+    current_month = datetime.now().strftime('%B')
+    # Open the sheet for the current month
+    return client.open_by_key(GOOGLE_SHEETS_ID).worksheet(current_month)
+
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text('Welcome! Use /start to start logging a new lesson.')
+
 
 async def start(update: Update, context: CallbackContext) -> None:
     await update.message.reply_text('Welcome! Use /start to start logging a new lesson.')
@@ -491,6 +503,8 @@ def main():
     # append_block_to_page("3a759b0b439f417b847fc20e3d6e0306",USER_ID)
     #testme()
     #test()
+    client = get_gcloud_connection()
+    get_current_sheet(client)
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', new_log)],
