@@ -31,3 +31,8 @@ class GoogleSheetsClient:
         general_sheet = self.get_general_sheet()
         lesson_index = int(general_sheet.cell(2,1).value)
         return lesson_index
+
+    def get_additional_questions(self):
+        sheet = self.get_general_sheet()
+        return sheet.col_values(2)[1:]  # Assuming questions are in column B
+

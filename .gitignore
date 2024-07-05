@@ -4,5 +4,4 @@ page
 data
 .idea
 credentials.json
-
-
+__pycache__

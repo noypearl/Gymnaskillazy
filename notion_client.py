@@ -15,10 +15,10 @@ class NotionClient:
         }
         self.logger = logging.getLogger(__name__)
 
-    async def save_to_notion(self, user_id,lesson_index, sessions):
+    async def save_to_notion(self, user_id, lesson_index, sessions):
         coach = MULTI_TAGS["coach"][sessions[user_id]["coach"]]
         type_tag = MULTI_TAGS["type"][sessions[user_id]["type"].capitalize()]
-        user_id = NOTION_USER_ID # TODO - get user ID from notion connection
+        user_id = NOTION_USER_ID  # TODO - get user ID from notion connection
         self.logger.info(f"Saving lesson for user {user_id} to Notion with coach {coach['name']} and type {type_tag['name']}")
 
         date_str = datetime.now().isoformat()
@@ -99,6 +99,7 @@ class NotionClient:
 
         response = requests.post(url, headers=self.headers, json=payload)
         response_data = response.json()
+        print(response_data)
         self.logger.info(f"Response from Notion: {response_data}")
         response.raise_for_status()
         return response_data["id"]
@@ -151,6 +152,32 @@ class NotionClient:
                                 'type': 'text',
                                 'text': {
                                     'content': f"\n{custom_exercise['description']}\n"
+                                }
+                            }
+                        ]
+                    }
+                })
+
+        if 'additional_info' in data:
+            for item in data['additional_info']:
+                blocks.append({
+                    'object': 'block',
+                    'type': 'paragraph',
+                    'paragraph': {
+                        'rich_text': [
+                            {
+                                'type': 'text',
+                                'text': {
+                                    'content': item['question'],
+                                },
+                                'annotations': {
+                                    'bold': True
+                                }
+                            },
+                            {
+                                'type': 'text',
+                                'text': {
+                                    'content': f"\n{item['answer']}\n"
                                 }
                             }
                         ]

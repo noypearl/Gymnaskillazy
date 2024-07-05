@@ -6,7 +6,7 @@ from notion_client import NotionClient
 from constants import EXPLANATIONS_TEXT, TELEGRAM_USER_ID
 
 class TelegramBot:
-    CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION = range(5)
+    CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(7)
 
     def __init__(self, telegram_token, notion_token, notion_database_id, google_sheets_credentials_file, google_sheets_id):
         self.telegram_token = telegram_token
@@ -27,7 +27,10 @@ class TelegramBot:
                 self.CHOOSING_COACH: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_coach)],
                 self.COLLECTING_DESCRIPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_description)],
                 self.ADDING_CUSTOM_EXERCISE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_custom_exercise)],
-                self.ADDING_CUSTOM_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_custom_description)]
+                self.ADDING_CUSTOM_DESCRIPTION: [MessageHandler(filters.TEXT
+                                                                & ~filters.COMMAND, self.add_custom_description)],
+                self.ASKING_ADDITIONAL_QUESTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.ask_additional_questions)],
+                self.COLLECTING_ADDITIONAL_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_additional_info)]
             },
             fallbacks=[CommandHandler('stop', self.stop)],
         )
@@ -45,6 +48,37 @@ class TelegramBot:
             return
         await update.message.reply_text('Welcome! Use /start to start '
                                         'logging a new lesson. 💪')
+
+    async def ask_additional_questions(self, update: Update, context: CallbackContext) -> int:
+        user_id = update.message.from_user.id
+        self.additional_questions = self.google_sheets_client.get_additional_questions()
+        self.current_question_index = 0
+        self.sessions[user_id]['additional_info'] = []
+
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text=f"Additional Question: {self.additional_questions[self.current_question_index]}")
+        return self.COLLECTING_ADDITIONAL_INFO
+
+    async def collect_additional_info(self, update: Update, context: CallbackContext) -> int:
+        user_id = update.message.from_user.id
+        answer = update.message.text
+        question = self.additional_questions[self.current_question_index]
+
+        self.sessions[user_id]['additional_info'].append({'question': question, 'answer': answer})
+
+        self.current_question_index += 1
+
+        if self.current_question_index < len(self.additional_questions):
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                                           text=f"Additional Question: {self.additional_questions[self.current_question_index]}")
+            return self.COLLECTING_ADDITIONAL_INFO
+        else:
+            await update.message.reply_text('Updating...')
+            page_id = await self.notion_client.save_to_notion(user_id, self.lesson_index, self.sessions)
+            await self.notion_client.append_block_to_page(page_id, self.sessions[user_id])
+            await self.notify_lesson_logged(update, user_id)
+            return ConversationHandler.END
+
 
     async def view_status(self, update: Update, context: CallbackContext) -> None:
         user_id = update.message.from_user.id
@@ -130,13 +164,11 @@ class TelegramBot:
         user_id = update.message.from_user.id
         description = update.message.text
         if description.lower() == "end":
-            await update.message.reply_text('Updating...')
-            page_id = await self.notion_client.save_to_notion(user_id,
-                                                              self.lesson_index,
-                                                              self.sessions)
-            await self.notion_client.append_block_to_page(page_id, self.sessions[user_id])
-            await self.notify_lesson_logged(update, user_id)
-            return ConversationHandler.END
+            await update.message.reply_text("All exercises were collected. "
+                                            "Now, "
+                                            "let's answer a few additional "
+                                            "questions.")
+            return await self.ask_additional_questions(update, context)
 
         elif description.lower() == "skip":
             await self.skip_exercise(update, user_id)
@@ -154,7 +186,7 @@ class TelegramBot:
         log_data = self.sessions[user_id]
         status_message = (f"Lesson completed! NOICE!! \n"
                           f"You had a {log_data['type'].capitalize()} lesson with {log_data['coach']}!\n"
-                          f"And did :\n")
+                          f"And did the following - \n\n")
 
         for idx, exercise in enumerate(log_data['exercises']):
             if exercise['description']:
@@ -166,8 +198,13 @@ class TelegramBot:
                 if exercise['description']:
                     status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
 
+        if 'additional_info' in log_data:
+            for item in log_data['additional_info']:
+                status_message += f"{item['question']}: {item['answer']}\n"
+
         await update.message.reply_text(status_message)
-        await update.message.reply_text('Lesson data added to Notion successfully!')
+        await update.message.reply_text('Lesson data was added to Notion '
+                                        'successfully!')
 
     async def skip_exercise(self, update: Update, user_id):
         if 'current_exercise' not in self.sessions[user_id]:
@@ -177,7 +214,9 @@ class TelegramBot:
         if current_exercise == len(self.sessions[user_id]['exercises']):
             self.sessions[user_id]['current_exercise'] = current_exercise
             await update.message.reply_text('exercise was skipped.')
-            await update.message.reply_text('All exercises collected. Type "end" to finish and save to Notion.')
+            await update.message.reply_text('All exercises collected. Type '
+                                            '"end" to move to additional '
+                                            'questions and save to Notion.')
         else:
             self.sessions[user_id]['current_exercise'] = current_exercise
             await update.message.reply_text(EXPLANATIONS_TEXT)
@@ -193,7 +232,9 @@ class TelegramBot:
             self.sessions[user_id]['current_exercise'] = current_exercise
             await update.message.reply_text(f"{self.sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
         else:
-            await update.message.reply_text("All exercises collected.\nType 'end' to finish and save to Notion \nor 'add' - to add a custom exercise")
+            await update.message.reply_text("All exercises collected.\nType "
+                                            "'end' to move to "
+                                            "additional questions and save to Notion \nor 'add' - to add a custom exercise")
 
     async def stop(self, update: Update, context: CallbackContext) -> int:
         user_id = update.message.from_user.id
