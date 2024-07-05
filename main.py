@@ -82,7 +82,7 @@ MULTI_TAGS = {
 }
 
 # States for conversation handler
-CHOOSING_TYPE, CHOOSING_COACH, GETTING_EXERCISES, COLLECTING_DESCRIPTIONS = range(4)
+CHOOSING_TYPE, CHOOSING_COACH, GETTING_EXERCISES, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION = range(6)
 
 # Dictionary to store ongoing sessions
 sessions = {}
@@ -127,6 +127,31 @@ async def choose_coach(update: Update, context: CallbackContext) -> int:
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{sessions[user_id]['exercises'][0]['type']} exercise - talk to me")
     return COLLECTING_DESCRIPTIONS
 
+async def add_custom_exercise(update: Update, context: CallbackContext) -> int:  # New function to handle custom exercise title
+    user_id = update.message.from_user.id
+    custom_exercise_title = update.message.text
+    sessions[user_id]['custom_exercise_title'] = custom_exercise_title
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='Enter the custom exercise description:')
+    return ADDING_CUSTOM_DESCRIPTION
+async def add_custom_description(update: Update, context: CallbackContext) -> int:  # New function to handle custom exercise description
+    user_id = update.message.from_user.id
+    custom_exercise_description = update.message.text
+    custom_exercise = {
+        'type': sessions[user_id]['custom_exercise_title'],
+        'description': custom_exercise_description
+    }
+    if 'custom_exercises' not in sessions[user_id]:
+        sessions[user_id]['custom_exercises'] = []
+    sessions[user_id]['custom_exercises'].append(custom_exercise)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='Custom exercise added successfully.')
+    # Continue with the regular exercise flow
+    if 'current_exercise' not in sessions[user_id]:
+        sessions[user_id]['current_exercise'] = 0
+    current_exercise = sessions[user_id]['current_exercise']
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
+    return COLLECTING_DESCRIPTIONS
+
+
 async def collect_description(update: Update, context: CallbackContext) -> int:
     user_id = update.message.from_user.id
     description = update.message.text
@@ -144,6 +169,9 @@ async def collect_description(update: Update, context: CallbackContext) -> int:
             await context.bot.send_message(chat_id=update.effective_chat.id, text='exercise was skipped.')
             await context.bot.send_message(chat_id=update.effective_chat.id, text='All exercises collected. Type "end" to finish and save to Notion.')
         return COLLECTING_DESCRIPTIONS
+    elif description.lower() == "add":  # New handling for "add" command
+        await context.bot.send_message(chat_id=update.effective_chat.id, text='Enter the custom exercise title:')
+        return ADDING_CUSTOM_EXERCISE
     else:
         if 'current_exercise' not in sessions[user_id]:
             sessions[user_id]['current_exercise'] = 0
@@ -429,7 +457,12 @@ def main():
         states={
             CHOOSING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_type)],
             CHOOSING_COACH: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_coach)],
-            COLLECTING_DESCRIPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_description)]
+            COLLECTING_DESCRIPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_description)],
+            ADDING_CUSTOM_EXERCISE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_exercise)],
+            # New state for custom exercise title
+            ADDING_CUSTOM_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_description)]
+            # New state for custom exercise description
+
         },
         fallbacks=[CommandHandler('stop', stop)],
     )
