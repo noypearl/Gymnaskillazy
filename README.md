@@ -133,6 +133,6 @@ poetry install
 
 ```
 
-The rest is uploading to AWS LAMBDA and adding a Gateway for the Telegram bot.
+The rest is uploading to AWS LAMBDA, adding a Gateway for the Telegram bot and configuring a webhook for the telegram bot so that the Lambda will get & process every new message.
 
 Good luck!

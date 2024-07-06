@@ -106,8 +106,6 @@ class NotionClient:
 
     async def append_block_to_page(self, page_id, data):
         blocks = []
-        with open('data', 'w') as f:
-            f.write(json.dumps(data))
         for exercise in data['exercises']:
             blocks.append({
                 'object': 'block',
