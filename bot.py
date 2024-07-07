@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+import requests
 from openai import OpenAI
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
@@ -7,6 +9,11 @@ from telegram.constants import ParseMode
 from google_sheets_client import GoogleSheetsClient
 from notion_client import NotionClient
 from constants import EXPLANATIONS_TEXT, CHATGPT_PROMPT
+from dotenv import load_dotenv
+from constants import CHATGPT_PROMPT
+
+load_dotenv()
+SECRET_TOKEN = os.getenv('SECRET_TOKEN')
 
 
 class TelegramBot:
@@ -15,8 +22,7 @@ class TelegramBot:
 
     def __init__(self, telegram_token, notion_token, notion_database_id,
                  google_sheets_credentials_file, google_sheets_id,
-                 openapi_token, webhook_url, secret_token, telegram_user_id,
-                 notion_user_id):
+                 openapi_token, webhook_url, secret_token, notion_user_id, telegram_user_id):
         self.telegram_token = telegram_token
         self.openapi_token = openapi_token
         self.google_sheets_client = GoogleSheetsClient(google_sheets_credentials_file, google_sheets_id)
@@ -24,8 +30,8 @@ class TelegramBot:
         self.sessions = {}
         self.secret_token = secret_token
         self.webhook_url = webhook_url
-        self.telegram_user_id = telegram_user_id
         self.notion_user_id = notion_user_id
+        self.telegram_user_id = telegram_user_id
 
         # Configure logging
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -59,7 +65,7 @@ class TelegramBot:
     async def start(self, update: Update, context: CallbackContext) -> None:
         user_id = update.message.from_user.id
         print(f" USER ID: {user_id}")
-        if user_id != TELEGRAM_USER_ID:
+        if user_id != self.telegram_user_id:
             await update.message.reply_text("Access denied. You are not authorized to use this bot.")
             return
         await update.message.reply_text('Welcome! Use /start to start '
@@ -287,37 +293,11 @@ class TelegramBot:
         await update.message.reply_text('Stopped the logging of the lesson.')
         return ConversationHandler.END
 
-    async def set_webhook(self):
+    def set_webhook(self):
         webhook_url = self.webhook_url
-        set_webhook_url = f"https://api.telegram.org/bot{self.telegram_token}/setWebhook?url={webhook_url}&secret_token={SECRET_TOKEN}"
+        set_webhook_url = f"https://api.telegram.org/bot{self.telegram_token}/setWebhook?url={webhook_url}&secret_token={self.secret_token}"
         response = requests.post(set_webhook_url)
+        print("RESP: {response}")
         if response.status_code == 200:
             print("Webhook set successfully")
 
-    async def run(self):
-        await self.application.run_webhook(
-            webhook_url=f"https://api.telegram.org/bot{self.telegram_token}/setWebhook?url=https://iu209iyrva.execute-api.us-east-1.amazonaws.com/default/telegram&secret_token=OeIeoDV8o82dNwMlUrOm11vxHb2YyYDs1PA8B5QS",
-            secret_token="OeIeoDV8o82dNwMlUrOm11vxHb2YyYDs1PA8B5QS")
-        # NO - we want webhook instead of polling
-        # self.application.run_polling()
-
-# if __name__ == '__main__':
-#     from dotenv import load_dotenv
-#     import os
-
-#     load_dotenv()
-
-#     TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-#     NOTION_TOKEN = os.getenv('NOTION_TOKEN')
-#     NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID')
-#     GOOGLE_SHEETS_CREDENTIALS_FILE = 'credentials.json'
-#     GOOGLE_SHEETS_ID = os.getenv('GOOGLE_SHEETS_ID')
-
-#     bot = TelegramBot(
-#         TELEGRAM_TOKEN,
-#         NOTION_TOKEN,
-#         NOTION_DATABASE_ID,
-#         GOOGLE_SHEETS_CREDENTIALS_FILE,
-#         GOOGLE_SHEETS_ID
-#     )
-#     bot.run()
