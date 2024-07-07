@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.constants import ParseMode
 from google_sheets_client import GoogleSheetsClient
 from notion_client import NotionClient
-from constants import EXPLANATIONS_TEXT, TELEGRAM_USER_ID, CHATGPT_PROMPT
+from constants import EXPLANATIONS_TEXT, CHATGPT_PROMPT
 
 
 class TelegramBot:
@@ -15,7 +15,8 @@ class TelegramBot:
 
     def __init__(self, telegram_token, notion_token, notion_database_id,
                  google_sheets_credentials_file, google_sheets_id,
-                 openapi_token, webhook_url, secret_token):
+                 openapi_token, webhook_url, secret_token, telegram_user_id,
+                 notion_user_id):
         self.telegram_token = telegram_token
         self.openapi_token = openapi_token
         self.google_sheets_client = GoogleSheetsClient(google_sheets_credentials_file, google_sheets_id)
@@ -23,6 +24,8 @@ class TelegramBot:
         self.sessions = {}
         self.secret_token = secret_token
         self.webhook_url = webhook_url
+        self.telegram_user_id = telegram_user_id
+        self.notion_user_id = notion_user_id
 
         # Configure logging
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)

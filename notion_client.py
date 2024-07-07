@@ -1,7 +1,7 @@
 import requests
 import json
 from datetime import datetime
-from constants import MULTI_TAGS, NOTION_USER_ID
+from constants import MULTI_TAGS
 import logging
 
 

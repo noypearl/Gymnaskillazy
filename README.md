@@ -4,6 +4,10 @@
 
 ## Overview
 The **Gymnaskillazy** is an intelligent bot that logs exercises and lessons to Notion based on user inputs from Telegram. It uses Google Sheets to manage exercises and additional questions, and leverages OpenAI's GPT-4 model to generate lesson titles. The bot is hosted on AWS Lambda for cost efficiency and scalability, but mainly because I'm lazy.
+<br><br>
+[![See the demo](https://cdn-images-1.medium.com/max/2400/1*knREUqTS5Gh5JA3qt4505Q.png)](https://youtu.be/5U-fgv25d-k)
+<br>
+[See the demo](https://youtu.be/5U-fgv25d-k)
 
 ## Why like that
 Using existing (Zapier-like) tools costs money, limited and is much less fun than having the ups & downs of developing a system from scratch.
@@ -47,6 +51,8 @@ TELEGRAM_USER_ID=<Your_Telegram_User_ID>
 NOTION_USER_ID=<Your_Notion_User_ID>
 WEBHOOK_URL=<Your_Webhook_URL> # URL to be set for webhook
 SECRET_TOKEN=<Your_Secret_Token> # Token to secure webhook - optional! (or not? ;))
+TELEGRAM_USER_ID=<Your user ID in telegram> 
+NOTION_USER_ID=<Your user ID in Notion> 
 ```
 
 ### Google Sheets Setup

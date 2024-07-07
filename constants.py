@@ -62,5 +62,3 @@ CHATGPT_PROMPT = "I have json of gym exercises that I logged. It holds " \
                   "Also it has additional questions. I want to analyze " \
                   "it and create a short title of the exercise - put a colon between exercises instead of words. use minimum words. remove words such as 'seconds' and instead keep the number only. It should be one line only. no newlines. Don't tell me the training type. Don't tell me the coach. Don't tell me the goal. I want to know about the big achievements. minimum words. no more than 10 words Don't mention the word 'title'. here it is: "
 
-NOTION_USER_ID="a29ff9e2-2d5c-4ed1-a4e9-de7ab0e08918"
-TELEGRAM_USER_ID=856026537
