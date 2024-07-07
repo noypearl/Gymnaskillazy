@@ -39,6 +39,6 @@ def lambda_handler(event, context):
     loop.run_until_complete(process_update(event))
     return {
         'statusCode': 200,
-        'body': json.dumps('Success')
+        'body': json.dumps('Succss')
     }
 

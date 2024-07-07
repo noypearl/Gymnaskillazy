@@ -4,6 +4,7 @@ from datetime import datetime
 from constants import MULTI_TAGS, NOTION_USER_ID
 import logging
 
+
 class NotionClient:
     def __init__(self, notion_token, notion_database_id):
         self.notion_token = notion_token
@@ -13,13 +14,14 @@ class NotionClient:
             'Content-Type': 'application/json',
             'Notion-Version': '2022-06-28'
         }
-        self.logger = logging.getLogger(__name__)
 
     async def save_to_notion(self, user_id, lesson_title, lesson_index, sessions):
+        print(f"XX in Save_to_notion")
+
         coach = MULTI_TAGS["coach"][sessions[user_id]["coach"]]
         type_tag = MULTI_TAGS["type"][sessions[user_id]["type"].capitalize()]
         user_id = NOTION_USER_ID  # TODO - get user ID from notion connection
-        self.logger.info(f"Saving lesson for user {user_id} to Notion with coach {coach['name']} and type {type_tag['name']}")
+        print(f"Saving lesson for user {user_id} to Notion with coach {coach['name']} and type {type_tag['name']}")
 
         date_str = datetime.now().isoformat()
         url = 'https://api.notion.com/v1/pages'
@@ -96,15 +98,17 @@ class NotionClient:
                 }
             }
         }
-
+        print(f"XX2 in Save_to_notion")
         response = requests.post(url, headers=self.headers, json=payload)
         response_data = response.json()
         print(response_data)
-        self.logger.info(f"Response from Notion: {response_data}")
+        print(f"Response from Notion: {response_data}")
         response.raise_for_status()
         return response_data["id"]
 
     async def append_block_to_page(self, page_id, data):
+        print(f"AI in append_block to page")
+
         blocks = []
         for exercise in data['exercises']:
             blocks.append({
@@ -185,9 +189,10 @@ class NotionClient:
 
         url = f'https://api.notion.com/v1/blocks/{page_id}/children'
         payload = {'children': blocks}
+        print(f"AI in append_block to page 2")
 
         response = requests.patch(url, headers=self.headers, json=payload)
         response_data = response.json()
-        self.logger.info(f"Appended blocks to Notion page {page_id}: {response_data}")
-        response.raise_for_status()
+        print(f"Appended blocks to Notion page {page_id}: {response_data}")
+        # response.raise_for_status()
         return response_data

@@ -3,12 +3,15 @@ import logging
 from openai import OpenAI
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+from telegram.constants import ParseMode
 from google_sheets_client import GoogleSheetsClient
 from notion_client import NotionClient
 from constants import EXPLANATIONS_TEXT, TELEGRAM_USER_ID, CHATGPT_PROMPT
 
+
 class TelegramBot:
-    CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(7)
+    CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(
+        7)
 
     def __init__(self, telegram_token, notion_token, notion_database_id,
                  google_sheets_credentials_file, google_sheets_id,
@@ -23,7 +26,6 @@ class TelegramBot:
 
         # Configure logging
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
 
         self.application = Application.builder().token(self.telegram_token).build()
 
@@ -32,12 +34,16 @@ class TelegramBot:
             states={
                 self.CHOOSING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_type)],
                 self.CHOOSING_COACH: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_coach)],
-                self.COLLECTING_DESCRIPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_description)],
-                self.ADDING_CUSTOM_EXERCISE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_custom_exercise)],
+                self.COLLECTING_DESCRIPTIONS: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_description)],
+                self.ADDING_CUSTOM_EXERCISE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_custom_exercise)],
                 self.ADDING_CUSTOM_DESCRIPTION: [MessageHandler(filters.TEXT
                                                                 & ~filters.COMMAND, self.add_custom_description)],
-                self.ASKING_ADDITIONAL_QUESTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.ask_additional_questions)],
-                self.COLLECTING_ADDITIONAL_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_additional_info)]
+                self.ASKING_ADDITIONAL_QUESTIONS: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.ask_additional_questions)],
+                self.COLLECTING_ADDITIONAL_INFO: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_additional_info)]
             },
             fallbacks=[CommandHandler('stop', self.stop)],
         )
@@ -49,7 +55,7 @@ class TelegramBot:
 
     async def start(self, update: Update, context: CallbackContext) -> None:
         user_id = update.message.from_user.id
-        print(f" USER ID: { user_id}")
+        print(f" USER ID: {user_id}")
         if user_id != TELEGRAM_USER_ID:
             await update.message.reply_text("Access denied. You are not authorized to use this bot.")
             return
@@ -81,7 +87,7 @@ class TelegramBot:
             return self.COLLECTING_ADDITIONAL_INFO
         else:
             await update.message.reply_text('Hurray! Got all the data!')
-            await update.message.reply_text('Now using AI tricks to '
+            await update.message.reply_text('Now using 🤖 AI 🤖 tricks to '
                                             'generate a nice title...')
             client = OpenAI(api_key=self.openapi_token)
             response = client.chat.completions.create(
@@ -96,9 +102,11 @@ class TelegramBot:
                 temperature=0.7
             )
             new_title = response.choices[0].message.content
+            print(f"AI Generated a new title {new_title}")
             self.sessions[user_id]['title'] = new_title
-            page_id = await self.notion_client.save_to_notion(user_id, new_title ,
+            page_id = await self.notion_client.save_to_notion(user_id, new_title,
                                                               self.lesson_index, self.sessions)
+            print(f"AI Generated a new title 2 {new_title}")
             await self.notion_client.append_block_to_page(page_id, self.sessions[user_id])
             await self.notify_lesson_logged(update, user_id)
             return ConversationHandler.END
@@ -124,11 +132,12 @@ class TelegramBot:
 
     async def new_log(self, update: Update, context: CallbackContext) -> int:
         user_id = update.message.from_user.id
-        self.logger.info(f"User ID: {user_id}")
+        print(f"User ID: {user_id}")
         self.sessions[user_id] = {'exercises': []}
         self.lesson_index = self.google_sheets_client.get_new_lesson_index()
         await update.message.reply_text('Is it a "Strength" or "Skill" lesson?',
-                                        reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']], one_time_keyboard=True))
+                                        reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']],
+                                                                         one_time_keyboard=True))
         return self.CHOOSING_TYPE
 
     async def choose_type(self, update: Update, context: CallbackContext) -> int:
@@ -136,7 +145,8 @@ class TelegramBot:
         lesson_type = update.message.text.lower()
         self.sessions[user_id]['type'] = lesson_type
         await update.message.reply_text('Who is the coach? Choose from: Shahar, Alon, Sagi, Yair',
-                                        reply_markup=ReplyKeyboardMarkup([['Shahar', 'Alon', 'Sagi', 'Yair']], one_time_keyboard=True))
+                                        reply_markup=ReplyKeyboardMarkup([['Shahar', 'Alon', 'Sagi', 'Yair']],
+                                                                         one_time_keyboard=True))
         return self.CHOOSING_COACH
 
     async def choose_coach(self, update: Update, context: CallbackContext) -> int:
@@ -151,8 +161,10 @@ class TelegramBot:
             exercise_data = sheet.col_values(2)[1:10]  # Column B
 
         self.sessions[user_id]['exercises'] = [{'type': ex, 'description': ''} for ex in exercise_data]
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Starting {self.sessions[user_id]['type']} lesson with {coach}. Let's start with the exercises.")
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{self.sessions[user_id]['exercises'][0]['type']} - talk to me.")
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text=f"Starting {self.sessions[user_id]['type']} lesson with {coach}. Let's start with the exercises.")
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text=f"{self.sessions[user_id]['exercises'][0]['type']} - talk to me.")
         await context.bot.send_message(chat_id=update.effective_chat.id, text=EXPLANATIONS_TEXT)
         return self.COLLECTING_DESCRIPTIONS
 
@@ -179,7 +191,8 @@ class TelegramBot:
         if 'current_exercise' not in self.sessions[user_id]:
             self.sessions[user_id]['current_exercise'] = 0
         current_exercise = self.sessions[user_id]['current_exercise']
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{self.sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text=f"{self.sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
         await context.bot.send_message(chat_id=update.effective_chat.id, text=EXPLANATIONS_TEXT)
         return self.COLLECTING_DESCRIPTIONS
 
@@ -207,29 +220,28 @@ class TelegramBot:
             return self.COLLECTING_DESCRIPTIONS
 
     async def notify_lesson_logged(self, update: Update, user_id):
+        print("in notify_lesson_logged")
         log_data = self.sessions[user_id]
-        status_message = (f"Lesson completed! NOICE!! \n"
-                          f"You had a {log_data['type'].capitalize()} lesson with {log_data['coach']}!\n"
-                          f"And did the following - \n\n")
+        status_message = (f"⭐  Lesson completed \\! Noice\\!  ⭐ \n"
+                          f"You had a *{log_data['type'].capitalize()}* lesson with *{log_data['coach']}*\n"
+                          f"And did the following \\- \n\n")
 
         for idx, exercise in enumerate(log_data['exercises']):
             if exercise['description']:
-                status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
-
-        status_message += "\n"
-
+                status_message += f"{idx + 1}\\. {exercise['type']}\\- {exercise['description']}\n"
         if 'custom_exercises' in log_data:
             status_message += "\n\nCustom Exercises:\n"
             for idx, exercise in enumerate(log_data['custom_exercises']):
                 if exercise['description']:
-                    status_message += f"{idx + 1}. {exercise['type']} - {exercise['description']}\n"
+                    status_message += f"{idx + 1}\\. {exercise['type']} \\- {exercise['description']}\n"
             status_message += "\n"
 
+        status_message += '\n'
         if 'additional_info' in log_data:
             for item in log_data['additional_info']:
-                status_message += f"{item['question']}: {item['answer']}\n"
-
-        await update.message.reply_text(status_message)
+                status_message += f"*{item['question']}*: {item['answer']}\n"
+        print("HELLO")
+        await update.message.reply_text(status_message, parse_mode=ParseMode.MARKDOWN_V2)
         await update.message.reply_text(f"A whole lesson is added to Notion: \n"
                                         f"{self.sessions[user_id]['title']}")
 
@@ -240,14 +252,15 @@ class TelegramBot:
         current_exercise += 1
         if current_exercise == len(self.sessions[user_id]['exercises']):
             self.sessions[user_id]['current_exercise'] = current_exercise
-            await update.message.reply_text('exercise was skipped.')
-            await update.message.reply_text('All exercises collected. Type '
+            await update.message.reply_text('exercise was skipped\.')
+            await update.message.reply_text('🤸 All exercises collected🤸 \nType '
                                             '"end" to move to additional '
-                                            'questions and save to Notion.')
+                                            'questions and save to Notion\nOr "add" - to add a custom exercise')
         else:
             self.sessions[user_id]['current_exercise'] = current_exercise
             await update.message.reply_text(EXPLANATIONS_TEXT)
-            await update.message.reply_text(f"{self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.")
+            await update.message.reply_text(
+                f"{self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.")
 
     async def add_description(self, update: Update, user_id, description):
         if 'current_exercise' not in self.sessions[user_id]:
@@ -257,9 +270,10 @@ class TelegramBot:
         current_exercise += 1
         if current_exercise < len(self.sessions[user_id]['exercises']):
             self.sessions[user_id]['current_exercise'] = current_exercise
-            await update.message.reply_text(f"{self.sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
+            await update.message.reply_text(
+                f"{self.sessions[user_id]['exercises'][current_exercise]['type']} exercise - talk to me")
         else:
-            await update.message.reply_text("All exercises collected.\nType "
+            await update.message.reply_text("🤸 All exercises collected🤸 \nType "
                                             "'end' to move to "
                                             "additional questions and save to Notion \nor 'add' - to add a custom exercise")
 
@@ -275,10 +289,12 @@ class TelegramBot:
         set_webhook_url = f"https://api.telegram.org/bot{self.telegram_token}/setWebhook?url={webhook_url}&secret_token={SECRET_TOKEN}"
         response = requests.post(set_webhook_url)
         if response.status_code == 200:
-            self.logger.info("Webhook set successfully")
+            print("Webhook set successfully")
 
     async def run(self):
-        await self.application.run_webhook(webhook_url=f"https://api.telegram.org/bot{self.telegram_token}/setWebhook?url=https://iu209iyrva.execute-api.us-east-1.amazonaws.com/default/telegram&secret_token=OeIeoDV8o82dNwMlUrOm11vxHb2YyYDs1PA8B5QS" ,secret_token="OeIeoDV8o82dNwMlUrOm11vxHb2YyYDs1PA8B5QS")
+        await self.application.run_webhook(
+            webhook_url=f"https://api.telegram.org/bot{self.telegram_token}/setWebhook?url=https://iu209iyrva.execute-api.us-east-1.amazonaws.com/default/telegram&secret_token=OeIeoDV8o82dNwMlUrOm11vxHb2YyYDs1PA8B5QS",
+            secret_token="OeIeoDV8o82dNwMlUrOm11vxHb2YyYDs1PA8B5QS")
         # NO - we want webhook instead of polling
         # self.application.run_polling()
 
