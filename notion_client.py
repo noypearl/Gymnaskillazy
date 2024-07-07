@@ -6,7 +6,7 @@ import logging
 
 
 class NotionClient:
-    def __init__(self, notion_token, notion_database_id):
+    def __init__(self, notion_token, notion_database_id, notion_user_id):
         self.notion_token = notion_token
         self.notion_database_id = notion_database_id
         self.headers = {
@@ -14,13 +14,14 @@ class NotionClient:
             'Content-Type': 'application/json',
             'Notion-Version': '2022-06-28'
         }
+        self.notion_user_id = notion_user_id
 
     async def save_to_notion(self, user_id, lesson_title, lesson_index, sessions):
         print(f"XX in Save_to_notion")
 
         coach = MULTI_TAGS["coach"][sessions[user_id]["coach"]]
         type_tag = MULTI_TAGS["type"][sessions[user_id]["type"].capitalize()]
-        user_id = NOTION_USER_ID  # TODO - get user ID from notion connection
+        user_id = self.notion_user_id  # TODO - get user ID from notion connection
         print(f"Saving lesson for user {user_id} to Notion with coach {coach['name']} and type {type_tag['name']}")
 
         date_str = datetime.now().isoformat()

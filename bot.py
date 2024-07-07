@@ -12,9 +12,6 @@ from constants import EXPLANATIONS_TEXT, CHATGPT_PROMPT
 from dotenv import load_dotenv
 from constants import CHATGPT_PROMPT
 
-load_dotenv()
-SECRET_TOKEN = os.getenv('SECRET_TOKEN')
-
 
 class TelegramBot:
     CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(
@@ -26,7 +23,7 @@ class TelegramBot:
         self.telegram_token = telegram_token
         self.openapi_token = openapi_token
         self.google_sheets_client = GoogleSheetsClient(google_sheets_credentials_file, google_sheets_id)
-        self.notion_client = NotionClient(notion_token, notion_database_id)
+        self.notion_client = NotionClient(notion_token, notion_database_id, notion_user_id)
         self.sessions = {}
         self.secret_token = secret_token
         self.webhook_url = webhook_url
@@ -66,6 +63,7 @@ class TelegramBot:
         user_id = update.message.from_user.id
         print(f" USER ID: {user_id}")
         if user_id != self.telegram_user_id:
+            print(f"user id is {user_id} instead of {self.telegram_user_id}")
             await update.message.reply_text("Access denied. You are not authorized to use this bot.")
             return
         await update.message.reply_text('Welcome! Use /start to start '
