@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 import os
 import requests
@@ -12,10 +13,8 @@ from constants import EXPLANATIONS_TEXT, CHATGPT_PROMPT
 from dotenv import load_dotenv
 from constants import CHATGPT_PROMPT
 
-
 class TelegramBot:
-    CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(
-        7)
+    CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(7)
 
     def __init__(self, telegram_token, notion_token, notion_database_id,
                  google_sheets_credentials_file, google_sheets_id,
@@ -33,7 +32,9 @@ class TelegramBot:
         # Configure logging
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-        self.application = Application.builder().token(self.telegram_token).build()
+        self.application = Application.builder().read_timeout(
+            300).write_timeout(300).token(
+            self.telegram_token).build()
 
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler('start', self.new_log)],
@@ -41,7 +42,10 @@ class TelegramBot:
                 self.CHOOSING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_type)],
                 self.CHOOSING_COACH: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_coach)],
                 self.COLLECTING_DESCRIPTIONS: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_description)],
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_description),
+                    CommandHandler('prev', self.prev_exercise),
+                    CommandHandler('next', self.next_exercise)
+                ],
                 self.ADDING_CUSTOM_EXERCISE: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_custom_exercise)],
                 self.ADDING_CUSTOM_DESCRIPTION: [MessageHandler(filters.TEXT
@@ -207,7 +211,6 @@ class TelegramBot:
         user_id = update.message.from_user.id
         description = update.message.text
         if description.lower() == "end":
-
             await update.message.reply_text("All exercises were collected. "
                                             "Now, "
                                             "let's answer a few additional "
@@ -225,6 +228,34 @@ class TelegramBot:
         else:
             await self.add_description(update, user_id, description)
             return self.COLLECTING_DESCRIPTIONS
+
+    async def prev_exercise(self, update: Update, context: CallbackContext) -> int:
+        user_id = update.message.from_user.id
+        if 'current_exercise' not in self.sessions[user_id]:
+            self.sessions[user_id]['current_exercise'] = 0
+        current_exercise = self.sessions[user_id]['current_exercise']
+        if current_exercise > 0:
+            current_exercise -= 1
+            self.sessions[user_id]['current_exercise'] = current_exercise
+            await update.message.reply_text(
+                f"Going back to the previous exercise: {self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.\nCurrent description: {self.sessions[user_id]['exercises'][current_exercise]['description']}")
+        else:
+            await update.message.reply_text("You are at the first exercise.")
+        return self.COLLECTING_DESCRIPTIONS
+
+    async def next_exercise(self, update: Update, context: CallbackContext) -> int:
+        user_id = update.message.from_user.id
+        if 'current_exercise' not in self.sessions[user_id]:
+            self.sessions[user_id]['current_exercise'] = 0
+        current_exercise = self.sessions[user_id]['current_exercise']
+        if current_exercise < len(self.sessions[user_id]['exercises']) - 1:
+            current_exercise += 1
+            self.sessions[user_id]['current_exercise'] = current_exercise
+            await update.message.reply_text(
+                f"Going to the next exercise: {self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.\nCurrent description: {self.sessions[user_id]['exercises'][current_exercise]['description']}")
+        else:
+            await update.message.reply_text("You are at the last exercise.")
+        return self.COLLECTING_DESCRIPTIONS
 
     async def notify_lesson_logged(self, update: Update, user_id):
         print("in notify_lesson_logged")
@@ -259,7 +290,7 @@ class TelegramBot:
         current_exercise += 1
         if current_exercise == len(self.sessions[user_id]['exercises']):
             self.sessions[user_id]['current_exercise'] = current_exercise
-            await update.message.reply_text('exercise was skipped\.')
+            await update.message.reply_text('exercise was skipped.')
             await update.message.reply_text('🤸 All exercises collected🤸 \nType '
                                             '"end" to move to additional '
                                             'questions and save to Notion\nOr "add" - to add a custom exercise')
@@ -269,11 +300,25 @@ class TelegramBot:
             await update.message.reply_text(
                 f"{self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.")
 
+
+    def escape_markdown_v2(self, text):
+        escape_chars = r'_*\[\]()~`>#+-=|{}.!\\'
+
+        # Regular expression to find characters that need to be escaped but aren't
+        pattern = re.compile(r'(?<!\\)([' + re.escape(escape_chars) + '])')
+
+        # Replace the characters with escaped versions
+        return pattern.sub(r'\\\1', text)
+
     async def add_description(self, update: Update, user_id, description):
+        description = self.escape_markdown_v2(description)
         if 'current_exercise' not in self.sessions[user_id]:
             self.sessions[user_id]['current_exercise'] = 0
         current_exercise = self.sessions[user_id]['current_exercise']
-        self.sessions[user_id]['exercises'][current_exercise]['description'] = description
+        if 'description' in self.sessions[user_id]['exercises'][current_exercise]:
+            self.sessions[user_id]['exercises'][current_exercise]['description'] += f" {description}"
+        else:
+            self.sessions[user_id]['exercises'][current_exercise]['description'] = description
         current_exercise += 1
         if current_exercise < len(self.sessions[user_id]['exercises']):
             self.sessions[user_id]['current_exercise'] = current_exercise
