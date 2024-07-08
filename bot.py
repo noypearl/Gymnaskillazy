@@ -274,7 +274,6 @@ class TelegramBot:
                     status_message += f"{idx + 1}\\. {exercise['type']} \\- {exercise['description']}\n"
             status_message += "\n"
 
-        status_message += '\n'
         if 'additional_info' in log_data:
             for item in log_data['additional_info']:
                 status_message += f"*{item['question']}*: {item['answer']}\n"
@@ -316,9 +315,9 @@ class TelegramBot:
             self.sessions[user_id]['current_exercise'] = 0
         current_exercise = self.sessions[user_id]['current_exercise']
         if 'description' in self.sessions[user_id]['exercises'][current_exercise]:
-            self.sessions[user_id]['exercises'][current_exercise]['description'] += f" {description}"
+            self.sessions[user_id]['exercises'][current_exercise]['description'] += f"{description}\n"
         else:
-            self.sessions[user_id]['exercises'][current_exercise]['description'] = description
+            self.sessions[user_id]['exercises'][current_exercise]['description'] = f"{description}\n"
         current_exercise += 1
         if current_exercise < len(self.sessions[user_id]['exercises']):
             self.sessions[user_id]['current_exercise'] = current_exercise
