@@ -6,51 +6,51 @@ EXPLANATIONS_TEXT = ("In every step you can write "
 MULTI_TAGS = {
     "coach": {
         "Alon": {
-            "id": ">@\\p",
+            "id": "h\\I[",
+            "color": "brown",
             "name": "Alon",
-            "color": "green",
             "description": None
         },
         "Yair": {
-            "id": "Lb@:",
+            "id": "oR:g",
             "name": "Yair",
-            "color": "default",
+            "color": "blue",
             "description": None
         },
         "Sagi": {
-            "id": "}cYR",
+            "id": "aw?v",
             "name": "Sagi",
-            "color": "red",
+            "color": "orange",
             "description": None
         },
         "Shahar": {
-            "id": "FglX",
+            "id": "dmi[",
             "name": "Shahar",
-            "color": "brown",
+            "color": "yellow",
             "description": None
         }
     },
     "type": {
         "Strength": {
-            "id": "EL\\u",
+            "id": "cd94d728-3bb9-4895-bf9c-43ca23505b72",
             "name": "Strength",
             "color": "purple",
             "description": None
         },
         "Skill": {
-            "id": "DVho",
+            "id": "2b0b454b-6f37-4a5c-858f-e69732c58b5d",
             "name": "Skill",
             "color": "green",
             "description": None
         },
         "Range": {
-            "id": "v^]a",
+            "id": "8d0ec6ef-fe7a-42d1-bb93-ae8e5a02d5ed",
             "name": "Range",
             "color": "yellow",
             "description": None
         },
         "Handstand": {
-            "id": "u<ga",
+            "id": "63bcb531-ce54-40c5-a83b-48258c45f628",
             "name": "Handstand",
             "color": "orange",
             "description": None

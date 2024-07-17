@@ -1,3 +1,4 @@
+from js import Response
 import os
 import json
 import asyncio
@@ -8,6 +9,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from bot import TelegramBot
 from dotenv import load_dotenv
 from constants import CHATGPT_PROMPT
+from logger_client import LoggerClient
+from notion_client import NotionClient
 
 load_dotenv()
 
@@ -27,6 +30,11 @@ bot = TelegramBot(TELEGRAM_TOKEN, NOTION_TOKEN, NOTION_DATABASE_ID, GOOGLE_SHEET
 
 application = bot.application
 
+logger = LoggerClient('output/app_output.txt')
+
+
+def on_fetch(request):
+    return Response.new("Hello World!")
 
 async def process_update(event):
     # update = event
@@ -37,6 +45,8 @@ async def process_update(event):
 
 
 def main(event=None):
+    props = bot.notion_client.get_database_properties(NOTION_DATABASE_ID)
+    logger.log_json(props)
     if event is None:
         # Polling mode
         print("No event - running the app in Telegram Polling mode (no "
@@ -50,8 +60,6 @@ def main(event=None):
             'statusCode': 200,
             'body': json.dumps('Success')
         }
-
-
 
 if __name__ == '__main__':
     main()

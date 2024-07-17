@@ -75,9 +75,9 @@ NOTION_USER_ID=<Your user ID in Notion>
     ```
 
 2. **Install dependencies using Poetry:**
+Inside root, with your virtual env activated, run
 ```sh 
-poetry install 
-
+poetry install --no-root
 ```
 
 3. ** Optional: Deploy to AWS Lambda:**

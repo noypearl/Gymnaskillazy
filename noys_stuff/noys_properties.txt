@@ -1,0 +1,60 @@
+{
+    "Coach": {
+        "id": "aYm;",
+        "type": "select",
+        "select": {
+            "id": coach["id"],
+            "name": coach["name"],
+            "color": coach["color"],
+            "description": coach["description"]
+        }
+    },
+    "Tags": {
+        "id": "bqtJ",
+        "type": "multi_select",
+        "multi_select": [
+            {
+                "id": type_tag["id"],
+                "name": type_tag["name"],
+                "color": type_tag["color"]
+            }
+        ]
+    },
+    "AI summary": {
+        "id": "n<mr",
+        "type": "rich_text",
+        "rich_text": []
+    },
+    "Date": {
+        "id": "}DM<",
+        "type": "date",
+        "date": {
+            "start": date_str,
+            "end": None,
+            "time_zone": None
+        }
+    },
+    "Name": {
+        "id": "title",
+        "type": "title",
+        "title": [
+            {
+                "type": "text",
+                "text": {
+                    "content": lesson_title,
+                    "link": None
+                },
+                "annotations": {
+                    "bold": False,
+                    "italic": False,
+                    "strikethrough": False,
+                    "underline": False,
+                    "code": False,
+                    "color": "default"
+                },
+                "plain_text": lesson_title,
+                "href": None
+            }
+        ]
+    }
+}

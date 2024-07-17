@@ -100,6 +100,7 @@ class TelegramBot:
             await update.message.reply_text('Hurray! Got all the data!')
             await update.message.reply_text('Now using 🤖 AI 🤖 tricks to '
                                             'generate a nice title...')
+            """
             client = OpenAI(api_key=self.openapi_token)
             response = client.chat.completions.create(
                 model="gpt-4",  # Use "gpt-4" for chat-based model
@@ -113,6 +114,8 @@ class TelegramBot:
                 temperature=0.7
             )
             new_title = response.choices[0].message.content
+            """
+            new_title = "some title"
             print(f"AI Generated a new title {new_title}")
             self.sessions[user_id]['title'] = new_title
             page_id = await self.notion_client.save_to_notion(user_id, new_title,

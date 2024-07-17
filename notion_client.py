@@ -40,7 +40,7 @@ class NotionClient:
             },
             "properties": {
                 "Coach": {
-                    "id": "aYm;",
+                    "id": "pY%60I",
                     "type": "select",
                     "select": {
                         "id": coach["id"],
@@ -50,7 +50,7 @@ class NotionClient:
                     }
                 },
                 "Tags": {
-                    "id": "bqtJ",
+                    "id": "TZcG",
                     "type": "multi_select",
                     "multi_select": [
                         {
@@ -61,12 +61,12 @@ class NotionClient:
                     ]
                 },
                 "AI summary": {
-                    "id": "n<mr",
+                    "id": "cggn",
                     "type": "rich_text",
                     "rich_text": []
                 },
                 "Date": {
-                    "id": "}DM<",
+                    "id": "TDK%3D",
                     "type": "date",
                     "date": {
                         "start": date_str,
@@ -196,4 +196,23 @@ class NotionClient:
         response_data = response.json()
         print(f"Appended blocks to Notion page {page_id}: {response_data}")
         # response.raise_for_status()
+        return response_data
+
+    def get_all_users(self):
+        print(f"get_all_user()")
+
+        url = f'https://api.notion.com/v1/users'
+
+        response = requests.get(url, headers=self.headers)
+        response_data = response.json()
+        print(f"response: {response_data}")
+        return response_data
+
+    def get_database_properties(self, database_id: str):
+        print("get_database_properties()")
+
+        url = f'https://api.notion.com/v1/databases/{database_id}'
+
+        response = requests.get(url, headers=self.headers)
+        response_data = response.json()
         return response_data
