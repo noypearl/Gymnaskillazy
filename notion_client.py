@@ -16,7 +16,7 @@ class NotionClient:
         }
         self.notion_user_id = notion_user_id
 
-    async def save_to_notion(self, user_id, lesson_title, lesson_index, sessions):
+    async def save_to_notion(self, user_id, lesson_title, sessions):
         print(f"XX in Save_to_notion")
 
         coach = MULTI_TAGS["coach"][sessions[user_id]["coach"]]

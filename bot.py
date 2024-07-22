@@ -118,8 +118,7 @@ class TelegramBot:
             new_title = "some title"
             print(f"AI Generated a new title {new_title}")
             self.sessions[user_id]['title'] = new_title
-            page_id = await self.notion_client.save_to_notion(user_id, new_title,
-                                                              self.lesson_index, self.sessions)
+            page_id = await self.notion_client.save_to_notion(user_id, new_title, self.sessions)
             print(f"AI Generated a new title 2 {new_title}")
             await self.notion_client.append_block_to_page(page_id, self.sessions[user_id])
             await self.notify_lesson_logged(update, user_id)
@@ -148,7 +147,6 @@ class TelegramBot:
         user_id = update.message.from_user.id
         print(f"User ID: {user_id}")
         self.sessions[user_id] = {'exercises': []}
-        self.lesson_index = self.google_sheets_client.get_new_lesson_index()
         await update.message.reply_text('Is it a "Strength" or "Skill" lesson?',
                                         reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']],
                                                                          one_time_keyboard=True))

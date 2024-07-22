@@ -26,11 +26,7 @@ class GoogleSheetsClient:
             return sheet.col_values(1)[1:10]  # A2:A10
         else:
             return sheet.col_values(2)[1:10]  # B2:B10
-
-    def get_new_lesson_index(self):
-        general_sheet = self.get_general_sheet()
-        lesson_index = int(general_sheet.cell(2,1).value)
-        return lesson_index
+            return sheet.col_values(2)[1:10]  # B2:B10
 
     def get_additional_questions(self):
         sheet = self.get_general_sheet()
