@@ -1,27 +1,24 @@
-import json
 import asyncio
+import json
 import os
-import requests
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from bot import TelegramBot
+
 from dotenv import load_dotenv
-from constants import CHATGPT_PROMPT
+from telegram import Update
+
+from bot import TelegramBot
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-NOTION_TOKEN = os.getenv('NOTION_TOKEN')
-NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID')
 GOOGLE_SHEETS_CREDENTIALS_FILE = 'credentials.json'
-GOOGLE_SHEETS_ID = os.getenv('GOOGLE_SHEETS_ID')
-OPENAI_API_TOKEN = os.getenv('OPENAI_API_TOKEN')
+GOOGLE_SHEETS_MAIN_DOC_ID = os.getenv('GOOGLE_SHEETS_MAIN_DOC_ID')
+GOOGLE_SHEETS_USER_TEMPLATE_DOC_ID = os.getenv('GOOGLE_SHEETS_USER_TEMPLATE_DOC_ID')
+GOOGLE_SHEETS_USER_LOG_FOLDER_ID = os.getenv('GOOGLE_SHEETS_USER_LOG_FOLDER_ID')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 SECRET_TOKEN = os.getenv('SECRET_TOKEN')
-NOTION_USER_ID = os.getenv('NOTION_USER_ID')
 TELEGRAM_USER_ID = os.getenv('TELEGRAM_USER_ID')
 
-bot = TelegramBot(TELEGRAM_TOKEN, NOTION_TOKEN, NOTION_DATABASE_ID, GOOGLE_SHEETS_CREDENTIALS_FILE,
-                  GOOGLE_SHEETS_ID, OPENAI_API_TOKEN, WEBHOOK_URL, SECRET_TOKEN, NOTION_USER_ID, TELEGRAM_USER_ID)
+bot = TelegramBot(TELEGRAM_TOKEN, GOOGLE_SHEETS_CREDENTIALS_FILE, GOOGLE_SHEETS_USER_TEMPLATE_DOC_ID, GOOGLE_SHEETS_USER_LOG_FOLDER_ID,
+                  GOOGLE_SHEETS_MAIN_DOC_ID, WEBHOOK_URL, SECRET_TOKEN, TELEGRAM_USER_ID)
 application = bot.application
 bot.set_webhook()
 

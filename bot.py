@@ -1,32 +1,36 @@
-import json
-import re
+import datetime
 import logging
-import os
+import re
+
 import requests
-from openai import OpenAI
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from telegram.constants import ParseMode
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+
+from constants import EXPLANATIONS_TEXT
 from google_sheets_client import GoogleSheetsClient
-from notion_client import NotionClient
-from constants import EXPLANATIONS_TEXT, CHATGPT_PROMPT
-from dotenv import load_dotenv
-from constants import CHATGPT_PROMPT
+from models.workout_log import WorkoutLog, ExerciseUnitLog
+from utilities.collections import neutralize_str
+from utilities.time import time_for_exer_log, date_for_exer_log
+
 
 class TelegramBot:
     CHOOSING_TYPE, CHOOSING_COACH, COLLECTING_DESCRIPTIONS, ADDING_CUSTOM_EXERCISE, ADDING_CUSTOM_DESCRIPTION, ASKING_ADDITIONAL_QUESTIONS, COLLECTING_ADDITIONAL_INFO = range(7)
 
-    def __init__(self, telegram_token, notion_token, notion_database_id,
-                 google_sheets_credentials_file, google_sheets_id,
-                 openapi_token, webhook_url, secret_token, notion_user_id, telegram_user_id):
+    def __init__(self, telegram_token,
+                 google_sheets_credentials_file, google_main_sheet_doc_id, google_user_template_doc_id, google_user_log_folder_id,
+                 webhook_url, secret_token, telegram_user_id):
         self.telegram_token = telegram_token
-        self.openapi_token = openapi_token
-        self.google_sheets_client = GoogleSheetsClient(google_sheets_credentials_file, google_sheets_id)
-        self.notion_client = NotionClient(notion_token, notion_database_id, notion_user_id)
+        self.google_sheets_client = GoogleSheetsClient(
+            google_sheets_credentials_file,
+            google_main_sheet_doc_id,
+            google_user_template_doc_id,
+            google_user_log_folder_id
+        )
         self.sessions = {}
+        self.exer_logs = {}
         self.secret_token = secret_token
         self.webhook_url = webhook_url
-        self.notion_user_id = notion_user_id
         self.telegram_user_id = telegram_user_id
 
         # Configure logging
@@ -78,6 +82,7 @@ class TelegramBot:
         self.additional_questions = self.google_sheets_client.get_additional_questions()
         self.current_question_index = 0
         self.sessions[user_id]['additional_info'] = []
+        self.exer_logs[user_id].notes = []
 
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text=f"Additional Question: {self.additional_questions[self.current_question_index]}")
@@ -89,6 +94,7 @@ class TelegramBot:
         question = self.additional_questions[self.current_question_index]
 
         self.sessions[user_id]['additional_info'].append({'question': question, 'answer': answer})
+        self.exer_logs[user_id].notes.append(f"{question} {answer}")
 
         self.current_question_index += 1
 
@@ -98,29 +104,10 @@ class TelegramBot:
             return self.COLLECTING_ADDITIONAL_INFO
         else:
             await update.message.reply_text('Hurray! Got all the data!')
-            await update.message.reply_text('Now using 🤖 AI 🤖 tricks to '
-                                            'generate a nice title...')
-            """
-            client = OpenAI(api_key=self.openapi_token)
-            response = client.chat.completions.create(
-                model="gpt-4",  # Use "gpt-4" for chat-based model
-                messages=[
-                    {"role": "system", "content": CHATGPT_PROMPT},
-                    {"role": "user", "content": str(self.sessions)}
-                ],
-                max_tokens=30,
-                n=1,
-                stop=None,
-                temperature=0.7
-            )
-            new_title = response.choices[0].message.content
-            """
-            new_title = "some title"
-            print(f"AI Generated a new title {new_title}")
+            await update.message.reply_text('Now naming this workout and logging it...')
+            new_title = "deprecated, to be deleted"
             self.sessions[user_id]['title'] = new_title
-            page_id = await self.notion_client.save_to_notion(user_id, new_title, self.sessions)
-            print(f"AI Generated a new title 2 {new_title}")
-            await self.notion_client.append_block_to_page(page_id, self.sessions[user_id])
+            self.google_sheets_client.log_workout(user_id, self.exer_logs[user_id])
             await self.notify_lesson_logged(update, user_id)
             return ConversationHandler.END
 
@@ -131,6 +118,7 @@ class TelegramBot:
             return
 
         log_data = self.sessions[user_id]
+        log_data = self.exer_logs[user_id]
         status_message = f"Current log data:\n\nType: {log_data['type'].capitalize()}\nCoach: {log_data['coach']}\nExercises:\n"
 
         for idx, exercise in enumerate(log_data['exercises']):
@@ -147,8 +135,9 @@ class TelegramBot:
         user_id = update.message.from_user.id
         print(f"User ID: {user_id}")
         self.sessions[user_id] = {'exercises': []}
+        self.exer_logs[user_id] = WorkoutLog(exercises=[])
         await update.message.reply_text('Is it a "Strength" or "Skill" lesson?',
-                                        reply_markup=ReplyKeyboardMarkup([['Strength', 'Skill']],
+                                        reply_markup=ReplyKeyboardMarkup([self.google_sheets_client.get_workout_type_list()],
                                                                          one_time_keyboard=True))
         return self.CHOOSING_TYPE
 
@@ -156,8 +145,9 @@ class TelegramBot:
         user_id = update.message.from_user.id
         lesson_type = update.message.text.lower()
         self.sessions[user_id]['type'] = lesson_type
-        await update.message.reply_text('Who is the coach? Choose from: Shahar, Alon, Sagi, Yair',
-                                        reply_markup=ReplyKeyboardMarkup([['Shahar', 'Alon', 'Sagi', 'Yair']],
+        self.exer_logs[user_id].type = lesson_type
+        await update.message.reply_text('Who is the coach?',
+                                        reply_markup=ReplyKeyboardMarkup([self.google_sheets_client.get_trainer_list()],
                                                                          one_time_keyboard=True))
         return self.CHOOSING_COACH
 
@@ -165,18 +155,13 @@ class TelegramBot:
         user_id = update.message.from_user.id
         coach = update.message.text
         self.sessions[user_id]['coach'] = coach
-        sheet = self.google_sheets_client.get_current_sheet()
-        exercise_data = []
-        if self.sessions[user_id]['type'] == 'strength':
-            exercise_data = sheet.col_values(1)[1:10]  # Column A
-        else:
-            exercise_data = sheet.col_values(2)[1:10]  # Column B
-
-        self.sessions[user_id]['exercises'] = [{'type': ex, 'description': ''} for ex in exercise_data]
+        exercise_list = self.google_sheets_client.get_exercise_list_by_type(self.exer_logs[user_id].type)
+        self.sessions[user_id]['exercises'] = [{'type': ex, 'description': ''} for ex in exercise_list]
+        self.exer_logs[user_id].exercises = [ExerciseUnitLog(type=ex_name) for ex_name in exercise_list]
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text=f"Starting {self.sessions[user_id]['type']} lesson with {coach}. Let's start with the exercises.")
         await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text=f"{self.sessions[user_id]['exercises'][0]['type']} - talk to me.")
+                                       text=f"{self.exer_logs[user_id].exercises[0].type} - talk to me.")
         await context.bot.send_message(chat_id=update.effective_chat.id, text=EXPLANATIONS_TEXT)
         return self.COLLECTING_DESCRIPTIONS
 
@@ -210,24 +195,24 @@ class TelegramBot:
 
     async def collect_description(self, update: Update, context: CallbackContext) -> int:
         user_id = update.message.from_user.id
-        description = update.message.text
-        if description.lower() == "end":
+        user_response = update.message.text
+        if neutralize_str(user_response) == "end":
             await update.message.reply_text("All exercises were collected. "
                                             "Now, "
                                             "let's answer a few additional "
                                             "questions.")
             return await self.ask_additional_questions(update, context)
 
-        elif description.lower() == "skip":
+        elif user_response.lower() == "skip":
             await self.skip_exercise(update, user_id)
             return self.COLLECTING_DESCRIPTIONS
 
-        elif description.lower() == "add":
+        elif user_response.lower() == "add":
             await context.bot.send_message(chat_id=update.effective_chat.id, text='Enter the custom exercise title:')
             return self.ADDING_CUSTOM_EXERCISE
 
         else:
-            await self.add_description(update, user_id, description)
+            await self.add_exer_log(update, user_id, user_response)
             return self.COLLECTING_DESCRIPTIONS
 
     async def prev_exercise(self, update: Update, context: CallbackContext) -> int:
@@ -300,7 +285,6 @@ class TelegramBot:
             await update.message.reply_text(
                 f"{self.sessions[user_id]['exercises'][current_exercise]['type']} - talk to me.")
 
-
     def escape_markdown_v2(self, text):
         escape_chars = r'_*\[\]()~`>#+-=|{}.!\\'
 
@@ -310,15 +294,14 @@ class TelegramBot:
         # Replace the characters with escaped versions
         return pattern.sub(r'\\\1', text)
 
-    async def add_description(self, update: Update, user_id, description):
-        description = self.escape_markdown_v2(description)
+    async def add_exer_log(self, update: Update, user_id, exer_rep_time):
+        # TODO: ask user if they have notes
+
         if 'current_exercise' not in self.sessions[user_id]:
             self.sessions[user_id]['current_exercise'] = 0
         current_exercise = self.sessions[user_id]['current_exercise']
-        if 'description' in self.sessions[user_id]['exercises'][current_exercise]:
-            self.sessions[user_id]['exercises'][current_exercise]['description'] += f"{description}\n"
-        else:
-            self.sessions[user_id]['exercises'][current_exercise]['description'] = f"{description}\n"
+        self.exer_logs[user_id].exercises[current_exercise].time = time_for_exer_log()
+        self.exer_logs[user_id].exercises[current_exercise].rep_sec = exer_rep_time
         current_exercise += 1
         if current_exercise < len(self.sessions[user_id]['exercises']):
             self.sessions[user_id]['current_exercise'] = current_exercise
@@ -343,4 +326,3 @@ class TelegramBot:
         print("RESP: {response}")
         if response.status_code == 200:
             print("Webhook set successfully")
-
