@@ -1,5 +1,8 @@
-from typing import List, Any, Hashable, Iterable
+from typing import List, Any, Hashable
 
+
+def is_empty(col):
+    return not col
 
 def filter_list_of_dicts_by_kv(l: List[dict], k: Hashable, v: Any) -> List[dict]:
     """

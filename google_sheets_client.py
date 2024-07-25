@@ -1,9 +1,9 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
 
 from constants import GENERAL_SHEET, USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, QUESTIONS_COL, TRAINERS_COL, \
     EXERCISE_ID_COL, LOG_SHEET
+from models.session import UserSession
 from models.workout_log import WorkoutLog
 from utilities.collections import filter_list_of_dicts_by_kv, uniquify, get_all_values_of_k
 
@@ -86,13 +86,13 @@ class GoogleSheetsClient:
         user_doc_id = self.get_user_sheet_doc_id_by_user_id(user_id)
         return self.get_doc(user_doc_id)
 
-    def log_workout(self, user_id, logs_object: WorkoutLog):
-        user_sheet_id = self.get_user_sheet_doc_id_by_user_id(user_id)
+    def log_workout(self, session: UserSession):
+        user_sheet_id = self.get_user_sheet_doc_id_by_user_id(session.user_id)
         user_sheet_doc = self.get_doc(user_sheet_id)
         if user_sheet_doc is None:
-            user_sheet_doc = self.create_user_sheet_doc(user_id)
+            user_sheet_doc = self.create_user_sheet_doc(session.user_id)
         log_sheet = user_sheet_doc.worksheet(LOG_SHEET)
-        rows = self.parse_log_to_rows(logs_object)
+        rows = self.parse_log_to_rows(session.workout_log)
         log_sheet.append_rows(rows)
 
     def parse_log_to_rows(self, logs_object: WorkoutLog):
