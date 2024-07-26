@@ -155,8 +155,8 @@ class TelegramBot:
         user_id = update.message.from_user.id
         lesson_type = update.message.text.lower()
         self.sessions[user_id]['type'] = lesson_type
-        await update.message.reply_text('Who is the coach? Choose from: Shahar, Alon, Sagi, Yair',
-                                        reply_markup=ReplyKeyboardMarkup([['Shahar', 'Alon', 'Sagi', 'Yair']],
+        await update.message.reply_text('Who is the coach? Choose from: Shahar, Alon, Sagi, Yair, Carmel',
+                                        reply_markup=ReplyKeyboardMarkup([['Shahar', 'Alon', 'Sagi', 'Yair', 'Carmel']],
                                                                          one_time_keyboard=True))
         return self.CHOOSING_COACH
 

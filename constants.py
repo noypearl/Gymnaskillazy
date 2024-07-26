@@ -28,6 +28,12 @@ MULTI_TAGS = {
             "name": "Shahar",
             "color": "yellow",
             "description": None
+        },
+        "Carmel": {
+            "id": "86997e0c-075e-4732-ae6d-3df42db11cbe",
+            "name": "Carmel",
+            "color": "red",
+            "description": None
         }
     },
     "type": {
