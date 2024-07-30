@@ -245,6 +245,7 @@ class TelegramBot:
         return self.COLLECTING_DESCRIPTIONS
 
     async def next_exercise(self, update: Update, context: CallbackContext) -> int:
+        # TODO: Refactor
         user_id = update.message.from_user.id
         if 'current_exercise' not in self.sessions[user_id]:
             self.sessions[user_id]['current_exercise'] = 0
