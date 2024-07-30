@@ -1,11 +1,15 @@
+from typing import Optional
+
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 from constants import GENERAL_SHEET, USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, QUESTIONS_COL, TRAINERS_COL, \
     EXERCISE_ID_COL, LOG_SHEET
 from models.session import UserSession
-from models.workout_log import WorkoutLog
-from utilities.collections import filter_list_of_dicts_by_kv, uniquify, get_all_values_of_k
+from models.workout_log import WorkoutLog, ExerciseUnitLog
+from utilities.collections import filter_list_of_dicts_by_kv, uniquify, get_all_values_of_k, filter_cell_list_by_value, \
+    get_most_recent_record, is_empty, filter_out_empty_members
+from utilities.time import time_for_exer_log
 
 
 class GoogleSheetsClient:
@@ -26,7 +30,13 @@ class GoogleSheetsClient:
         return gspread.authorize(credentials)
 
     def get_doc(self, sheet_id):
-        return self.client.open_by_key(sheet_id)
+        try:
+            return self.client.open_by_key(sheet_id)
+        except Exception as e:
+            # TODO DEBUG: find out what exception is raised when no doc by this id
+            print("oops")
+            return
+
 
     def get_main_doc_sheet(self, sheet_name):
         return self.main_doc.worksheet(sheet_name)
@@ -37,6 +47,43 @@ class GoogleSheetsClient:
         filtered_exercises = filter_list_of_dicts_by_kv(all_exercises, CURRENT_COL, workout_type)
         exercise_list = get_all_values_of_k(filtered_exercises, EXERCISE_ID_COL)
         return exercise_list
+
+    def get_exercise_last_log(self, user_id: int, exercise: ExerciseUnitLog) -> Optional[ExerciseUnitLog]:
+        user_sheet_doc = self.get_user_doc_by_user_id(user_id)
+        if user_sheet_doc is None:
+            return
+        exercise_sheet = user_sheet_doc.worksheet(exercise.type)
+        exercise_column_number = self.get_column_number(exercise_sheet, "Exercise")
+        existing_log_for_exercise_type = exercise_sheet.find(exercise.type, in_column=exercise_column_number)
+        if existing_log_for_exercise_type is None:
+            return
+        all_cells = exercise_sheet.get_all_cells()
+        past_logs_for_exercise = filter_cell_list_by_value(all_cells, exercise.type)
+        last_log_of_exercise = get_most_recent_record(past_logs_for_exercise)
+        row_for_last_log = exercise_sheet.row_values(last_log_of_exercise.row)
+        return ExerciseUnitLog(
+            time=row_for_last_log[2],
+            type=row_for_last_log[3],
+            variation=row_for_last_log[4],
+            rep_sec=row_for_last_log[5],
+            notes=row_for_last_log[6]
+        )
+
+    def get_exercise_variation_list(self, exercise_type):
+        exercise_sheet = self.main_doc.worksheet(exercise_type)
+        variation_column_number = self.get_column_number(exercise_sheet, "Variation/Level")
+        return filter_out_empty_members(exercise_sheet.col_values(variation_column_number))
+
+    def get_exercise_variation_level_list(self, exercise_type, variation_name):
+        exercise_sheet = self.main_doc.worksheet(exercise_type)
+        variation_column_header = exercise_sheet.find(variation_name, in_row=1)
+        return filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))
+
+    def get_column_number(self, sheet, column_header: str):
+        title_cell = sheet.find(column_header, case_sensitive=False)
+        if title_cell is None:
+            raise Exception(f"Column {column_header} not found")
+        return title_cell.col
 
     def get_additional_questions(self):
         return self.get_general_sheet_list(QUESTIONS_COL)

@@ -1,22 +1,42 @@
+import itertools
 from dataclasses import dataclass, field
 from typing import List
 
+from utilities.collections import is_empty
 from utilities.time import date_for_exer_log, time_for_exer_log
 
 
-@dataclass
 class ExerciseUnitLog:
-    type: str
-    rep_sec: str = ""
-    time: str = time_for_exer_log()
-    variation: str = ""
-    notes: List[str] = None
+    id_iter = itertools.count()
 
+    def __init__(self, type: str, time=None, variation=None, level=None, rep_sec=None, notes=None):
+        self.idx = next(self.id_iter)
+        self.type = type
+        self.rep_sec = rep_sec
+        self.time = time_for_exer_log() if None else time
+        self.variation = variation
+        self.level = level
+        self.notes = [] if None else notes
 
-@dataclass
 class WorkoutLog:
-    spreadsheet_id: str = ""  # TODO: does that make sense?
-    exercises: List[ExerciseUnitLog] = field(default_factory=list)
-    custom_exercises: List[ExerciseUnitLog] = field(default_factory=list)
-    type: str = ""
-    date: str = date_for_exer_log()
+    def __init__(self, date = None):
+        self.spreadsheet_id = None  # TODO: does that make sense?
+        self.exercises = []
+        self.custom_exercises = []
+        self.type = None
+        self.date = date_for_exer_log() if None else date
+
+    def last_exercise_of_same_type(self, exercise: ExerciseUnitLog):
+        all_exercise_logs_of_type = self.get_all_exercise_logs_by_exercise_type(exercise.type)
+        if min([ex.idx for ex in all_exercise_logs_of_type]) < exercise.idx:
+            return self.get_exercise_by_idx(exercise.idx - 1)
+        return None
+
+    def get_all_exercise_logs_by_exercise_type(self, exercise_name):
+        return [ex for ex in self.exercises if ex.type == exercise_name]
+
+    def get_exercise_by_idx(self, idx):
+        ex_lookup = [ex for ex in self.exercises if ex.idx == idx]
+        if is_empty(ex_lookup):
+            raise IndexError(f'No exercise by idx {idx}')
+        return ex_lookup[0]
