@@ -10,7 +10,7 @@ class LoggerClient:
 
     def log(self, message):
         with open(self.output_file_path, 'a') as f:
-            f.write(f"[{datetime.now().isoformat()}] {message}\n")
+            f.write(f"[{datetime.now().isoformat()}] {str(message)}\n")
 
     def log_json(self, message: Union[str,list,dict]):
         serialized = json.dumps(message)

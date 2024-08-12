@@ -52,15 +52,15 @@ class GoogleSheetsClient:
         user_sheet_doc = self.get_user_doc_by_user_id(user_id)
         if user_sheet_doc is None:
             return
-        exercise_sheet = user_sheet_doc.worksheet(exercise.type)
-        exercise_column_number = self.get_column_number(exercise_sheet, "Exercise")
-        existing_log_for_exercise_type = exercise_sheet.find(exercise.type, in_column=exercise_column_number)
+        log_sheet = user_sheet_doc.worksheet("Full Workout Log")
+        exercise_column_number = self.get_column_number(log_sheet, "Exercise")
+        existing_log_for_exercise_type = log_sheet.find(exercise.type, in_column=exercise_column_number)
         if existing_log_for_exercise_type is None:
             return
-        all_cells = exercise_sheet.get_all_cells()
+        all_cells = log_sheet.get_all_cells()
         past_logs_for_exercise = filter_cell_list_by_value(all_cells, exercise.type)
         last_log_of_exercise = get_most_recent_record(past_logs_for_exercise)
-        row_for_last_log = exercise_sheet.row_values(last_log_of_exercise.row)
+        row_for_last_log = log_sheet.row_values(last_log_of_exercise.row)
         return ExerciseUnitLog(
             time=row_for_last_log[2],
             type=row_for_last_log[3],
@@ -72,12 +72,12 @@ class GoogleSheetsClient:
     def get_exercise_variation_list(self, exercise_type):
         exercise_sheet = self.main_doc.worksheet(exercise_type)
         variation_column_number = self.get_column_number(exercise_sheet, "Variation/Level")
-        return filter_out_empty_members(exercise_sheet.col_values(variation_column_number))
+        return filter_out_empty_members(exercise_sheet.col_values(variation_column_number))[1:]  # w/out title
 
     def get_exercise_variation_level_list(self, exercise_type, variation_name):
         exercise_sheet = self.main_doc.worksheet(exercise_type)
         variation_column_header = exercise_sheet.find(variation_name, in_row=1)
-        return filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))
+        return filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))[1:]
 
     def get_column_number(self, sheet, column_header: str):
         title_cell = sheet.find(column_header, case_sensitive=False)

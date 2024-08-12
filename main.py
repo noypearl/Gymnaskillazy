@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from telegram import Update
 
 from bot import TelegramBot
-from logger_client import LoggerClient
+from utilities.logger_client import LoggerClient
 
 load_dotenv()
 
