@@ -6,9 +6,10 @@ from dotenv import load_dotenv
 from telegram import Update
 
 from bot import TelegramBot
-from logger_client import LoggerClient
+from utilities.logger_client import LoggerClient
 
 load_dotenv()
+logger = LoggerClient('output/app_output.txt')
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 GOOGLE_SHEETS_CREDENTIALS_FILE = 'credentials.json'
@@ -27,12 +28,12 @@ bot = TelegramBot(
     google_user_log_folder_id=GOOGLE_SHEETS_USER_LOG_FOLDER_ID,
     webhook_url=WEBHOOK_URL,
     secret_token=SECRET_TOKEN,
-    telegram_user_id=TELEGRAM_USER_ID
+    telegram_user_id=TELEGRAM_USER_ID,
+    logger=logger
 )
 
 application = bot.application
 
-logger = LoggerClient('output/app_output.txt')
 
 
 async def process_update(event):

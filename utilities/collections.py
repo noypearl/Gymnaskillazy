@@ -35,5 +35,6 @@ def filter_cell_list_by_value(l: list, v: str):
 def get_most_recent_record(l: list):
     return max(l, key=lambda cell: cell.row)
 
-def filter_out_empty_members(l: list) -> list:
-    return [i for i in l if not is_empty(i)]
+def filter_out_empty_members(l: list, header=True) -> list:
+    result = [i for i in l if not is_empty(i)]
+    return result[1:] if header else result

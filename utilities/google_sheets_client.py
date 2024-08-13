@@ -3,7 +3,7 @@ from typing import Optional
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-from constants import GENERAL_SHEET, USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, QUESTIONS_COL, TRAINERS_COL, \
+from utilities.constants import GENERAL_SHEET, USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, QUESTIONS_COL, TRAINERS_COL, \
     EXERCISE_ID_COL, LOG_SHEET
 from models.session import UserSession
 from models.workout_log import WorkoutLog, ExerciseUnitLog
@@ -52,7 +52,7 @@ class GoogleSheetsClient:
         user_sheet_doc = self.get_user_doc_by_user_id(user_id)
         if user_sheet_doc is None:
             return
-        exercise_sheet = user_sheet_doc.worksheet(exercise.type)
+        exercise_sheet = user_sheet_doc.worksheet("Full Workout Log")
         exercise_column_number = self.get_column_number(exercise_sheet, "Exercise")
         existing_log_for_exercise_type = exercise_sheet.find(exercise.type, in_column=exercise_column_number)
         if existing_log_for_exercise_type is None:
@@ -72,12 +72,12 @@ class GoogleSheetsClient:
     def get_exercise_variation_list(self, exercise_type):
         exercise_sheet = self.main_doc.worksheet(exercise_type)
         variation_column_number = self.get_column_number(exercise_sheet, "Variation/Level")
-        return filter_out_empty_members(exercise_sheet.col_values(variation_column_number))
+        return filter_out_empty_members(exercise_sheet.col_values(variation_column_number))[1:]
 
     def get_exercise_variation_level_list(self, exercise_type, variation_name):
         exercise_sheet = self.main_doc.worksheet(exercise_type)
         variation_column_header = exercise_sheet.find(variation_name, in_row=1)
-        return filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))
+        return filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))[1:]
 
     def get_column_number(self, sheet, column_header: str):
         title_cell = sheet.find(column_header, case_sensitive=False)
