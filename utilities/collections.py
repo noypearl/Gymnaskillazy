@@ -1,5 +1,8 @@
-from typing import List, Any, Hashable, Iterable
+from typing import List, Any, Hashable
 
+
+def is_empty(col):
+    return not col
 
 def filter_list_of_dicts_by_kv(l: List[dict], k: Hashable, v: Any) -> List[dict]:
     """
@@ -25,3 +28,16 @@ def neutralize_str(s: str) -> str:
     if isinstance(s, str):
         return s.strip().lower()
     return s
+
+def get_most_recent_record(l: list):
+    return max(l, key=lambda cell: cell.row)
+
+def filter_out_empty_members(l: list, header=True) -> list:
+    result = [i for i in l if not is_empty(i)]
+    return result[1:] if header else result
+
+def list_to_str(l: list) -> str:
+    return ", ".join(l)
+
+def min_exercise_id(l):
+    return min(l, key=lambda x: x.id)
