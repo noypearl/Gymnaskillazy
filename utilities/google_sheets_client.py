@@ -8,7 +8,7 @@ from utilities.constants import GENERAL_SHEET, USERS_SHEET, CURRENT_COL, EXERCIS
 from models.session import UserSession
 from models.workout_log import WorkoutLog, ExerciseUnitLog
 from utilities.collections import filter_list_of_dicts_by_kv, uniquify, get_all_values_of_k, filter_cell_list_by_value, \
-    get_most_recent_record, is_empty, filter_out_empty_members
+    get_most_recent_record, is_empty, filter_out_empty_members, neutralize_str
 from utilities.time import time_for_exer_log
 
 
@@ -52,21 +52,21 @@ class GoogleSheetsClient:
         user_sheet_doc = self.get_user_doc_by_user_id(user_id)
         if user_sheet_doc is None:
             return
-        exercise_sheet = user_sheet_doc.worksheet("Full Workout Log")
-        exercise_column_number = self.get_column_number(exercise_sheet, "Exercise")
-        existing_log_for_exercise_type = exercise_sheet.find(exercise.type, in_column=exercise_column_number)
+        log_sheet = user_sheet_doc.worksheet("Full Workout Log")
+        exercise_column_number = self.get_column_number(log_sheet, "Exercise")
+        existing_log_for_exercise_type = log_sheet.find(exercise.type, in_column=exercise_column_number)
         if existing_log_for_exercise_type is None:
             return
-        all_cells = exercise_sheet.get_all_cells()
-        past_logs_for_exercise = filter_cell_list_by_value(all_cells, exercise.type)
+        past_logs_for_exercise = log_sheet.findall(query=exercise.type, in_column=exercise_column_number)
         last_log_of_exercise = get_most_recent_record(past_logs_for_exercise)
-        row_for_last_log = exercise_sheet.row_values(last_log_of_exercise.row)
+        row_for_last_log = self.get_exercise_row_as_dict_by_cell(log_sheet, last_log_of_exercise.row)
         return ExerciseUnitLog(
-            time=row_for_last_log[2],
-            type=row_for_last_log[3],
-            variation=row_for_last_log[4],
-            rep_sec=row_for_last_log[5],
-            notes=row_for_last_log[6]
+            time=row_for_last_log.get("time"),
+            type=row_for_last_log.get("exercise"),
+            variation=row_for_last_log.get("variation"),
+            level=row_for_last_log.get("level"),
+            rep_sec=row_for_last_log.get("rep/sec"),
+            notes=row_for_last_log.get("notes")
         )
 
     def get_exercise_variation_list(self, exercise_type):
@@ -77,7 +77,7 @@ class GoogleSheetsClient:
     def get_exercise_variation_level_list(self, exercise_type, variation_name):
         exercise_sheet = self.main_doc.worksheet(exercise_type)
         variation_column_header = exercise_sheet.find(variation_name, in_row=1)
-        return filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))[1:]
+        return filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))
 
     def get_column_number(self, sheet, column_header: str):
         title_cell = sheet.find(column_header, case_sensitive=False)
@@ -151,7 +151,22 @@ class GoogleSheetsClient:
                 x.time,
                 x.type,
                 x.variation,
+                x.level,
                 x.rep_sec,
                 x.notes
             ])
         return logs_list
+
+    def get_exercise_row_as_dict_by_cell(self, worksheet, cell_row) -> dict:
+        # for user exercise log
+        headers = [neutralize_str(h) for h in worksheet.row_values(1)]
+        row = worksheet.row_values(cell_row)
+        result = {}
+        for h in range(len(headers)):
+            head = headers[h]
+            if h >= len(row):
+                result[head] = None
+            else:
+                result[head] = row[h]
+        return result
+

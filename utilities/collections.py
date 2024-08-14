@@ -38,3 +38,4 @@ def get_most_recent_record(l: list):
 def filter_out_empty_members(l: list, header=True) -> list:
     result = [i for i in l if not is_empty(i)]
     return result[1:] if header else result
+

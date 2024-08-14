@@ -12,6 +12,7 @@ from utilities.google_sheets_client import GoogleSheetsClient
 from models.session import UserSession
 from models.workout_log import ExerciseUnitLog
 from utilities.collections import neutralize_str
+from utilities.telegram import NumericOrDotFilter
 from utilities.time import time_for_exer_log
 
 
@@ -48,9 +49,9 @@ class TelegramBot:
                 self.COLLECT_EXERCISE_RECORDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_exercise_records)],
                 self._COLLECT_EXERCISE_RECORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.collect_exercise_record)],
                 self.USE_PREVIOUS_EXERCISE_RECORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.use_previous_exercise_record)],
-                self.SET_EXERCISE_VARIATION: [MessageHandler(None, self.set_exercise_variation)],
+                self.SET_EXERCISE_VARIATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.set_exercise_variation)],
                 self.SET_EXERCISE_LEVEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.set_exercise_level)],
-                self.SET_REP_SEC: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.set_exercise_rep_sec)],
+                self.SET_REP_SEC: [MessageHandler(NumericOrDotFilter() & ~filters.COMMAND, self.set_exercise_rep_sec)],
             },
             fallbacks=[CommandHandler('stop', self.stop)],
             # allow_reentry=True
@@ -96,7 +97,6 @@ class TelegramBot:
 
     async def collect_exercise_record(self, update, context):
         self.logger.log("collect_exercise_record()")
-
         user_id = update.message.from_user.id
         curr_ex_id = context.chat_data.get('ex_id')
         if curr_ex_id == self.sessions[user_id].workout_log.exercise_count():
@@ -104,6 +104,7 @@ class TelegramBot:
         self.sessions[user_id].current_exercise = self.sessions[user_id].workout_log.get_exercise_by_id(curr_ex_id)  # no need to keep track of current if I loop through them
         # check if any previous record
         latest_record = self.sessions[user_id].workout_log.last_exercise_of_same_type(self.sessions[user_id].current_exercise)
+        context.chat_data['latest_record'] = latest_record
         if latest_record is None:
             latest_record = self.google_sheets_client.get_exercise_last_log(user_id, self.sessions[user_id].current_exercise)
         if latest_record is not None:
@@ -112,35 +113,34 @@ class TelegramBot:
             await update.message.reply_text(
                 f'Use same definition as last time?\n  {latest_record.variation} | {latest_record.level} | {latest_record.rep_sec}',
                 reply_markup=ReplyKeyboardMarkup(
-                    ['same', 'different'],
+                    [['same', 'different']],
                     one_time_keyboard=True))
             return self.USE_PREVIOUS_EXERCISE_RECORD
         else:
-            try:
-                await update.message.reply_text(
-                    f'This is your first time logging {self.sessions[user_id].current_exercise.type}!\nChoose a variation:',
-                    reply_markup=ReplyKeyboardMarkup(
-                        [self.google_sheets_client.get_exercise_variation_list(self.sessions[user_id].current_exercise.type)],
-                        one_time_keyboard=True))
-                return self.SET_EXERCISE_VARIATION
-            except Exception as e:
-                self.logger.log("oops!")
-                self.logger.log(str(e))
+            await update.message.reply_text(
+                f'This is your first time logging {self.sessions[user_id].current_exercise.type}!\nChoose a variation:',
+                reply_markup=ReplyKeyboardMarkup(
+                    [self.google_sheets_client.get_exercise_variation_list(self.sessions[user_id].current_exercise.type)],
+                    one_time_keyboard=True))
+            return self.SET_EXERCISE_VARIATION
 
     async def use_previous_exercise_record(self, update: Update, context: CallbackContext):
         self.logger.log("use_previous_exercise_record()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
+        latest_record = context.chat_data.get('latest_record')
         if user_choice == 'same':
-            latest_record = context.chat_data.get('latest_record')
             self.sessions[user_id].current_exercise.variation=latest_record.variation
             self.sessions[user_id].current_exercise.level=latest_record.level
             self.sessions[user_id].current_exercise.rep_sec=latest_record.rep_sec
-            context.chat_data['ex_id'] += 1
-            return self.collect_exercise_record(update, context)
+            self.complete_exercise_log(update, context)
+            await context.update_queue.put(update)
+            return self._COLLECT_EXERCISE_RECORD
         else:
-            await update.message.reply_text(
-                f"rep/sec: (. to use {context.chat_data.get('latest_record').rep_sec}")
+            msg = "rep/sec:"
+            if latest_record is not None:
+                msg += f" (press '.' to use {context.chat_data.get('latest_record').rep_sec})"
+            await update.message.reply_text(msg)
             return self.SET_REP_SEC
 
     async def set_exercise_rep_sec(self, update: Update, context: CallbackContext):
@@ -148,58 +148,70 @@ class TelegramBot:
         user_id = update.message.from_user.id
         # possible choices: '.' / <rep_sec>
         user_choice = update.message.text
-        if user_choice.strip() == '.':
-            rep_sec = context.chat_data.get('latest_record').rep_sec
+        latest_record = context.chat_data.get('latest_record')
+        if latest_record is None:
+            # TODO: if no latest_record, take user input until it's not '.'
+            pass
+        if neutralize_str(user_choice) == '.':
+            rep_sec = latest_record.rep_sec
         else:
             rep_sec = user_choice.strip()
-        self.sessions[user_id].current_exercise.rep_sec = rep_sec
-        if self.sessions[user_id].current_exercise.level is None:
-            await update.message.reply_text('Choose level',
+        self.sessions[user_id].current_exercise.rep_sec = int(rep_sec)
+        if self.sessions[user_id].current_exercise.variation is None:
+            keyboard_options = self.google_sheets_client.get_exercise_variation_list(self.sessions[user_id].current_exercise.type)
+            if latest_record is not None:
+                keyboard_options += ["same"]
+            await update.message.reply_text('Choose variation',
                                             reply_markup=ReplyKeyboardMarkup(
-                                                [self.google_sheets_client.get_exercise_variation_level_list(
-                                                    self.sessions[user_id].current_exercise.type,
-                                                    self.sessions[user_id].current_exercise.variation)],
+                                                [keyboard_options],
                                                 one_time_keyboard=True))
-        return await self.collect_exercise_record(update, context)
+            return self.SET_EXERCISE_VARIATION
+        self.complete_exercise_log(update, context)
+        await context.update_queue.put(update)
+        return self._COLLECT_EXERCISE_RECORD
 
     async def set_exercise_level(self, update: Update, context: CallbackContext):
         self.logger.log("set_exercise_level()")
         user_id = update.message.from_user.id
-        # possible choices: '.' / <l>
         user_choice = update.message.text
-        if user_choice.strip() == '.':
+        if neutralize_str(user_choice) == 'same':
             level = context.chat_data.get('latest_record').level
         else:
             level = user_choice.strip()
         self.sessions[user_id].current_exercise.level = level
-        if self.sessions[user_id].current_exercise.variation is None:
-            await update.message.reply_text('Choose variation',
-                                            reply_markup=ReplyKeyboardMarkup(
-                                                [self.google_sheets_client.get_exercise_variation_list(self.sessions[user_id].current_exercise.type)],
-                                                one_time_keyboard=True))
-            return self.SET_EXERCISE_VARIATION
-        await update.message.reply_text(
-            f"rep/sec: (. to use {context.chat_data.get('latest_record').rep_sec}")
-        return self.SET_REP_SEC
+        if self.sessions[user_id].current_exercise.rep_sec is None:
+            msg = "rep/sec:"
+            if context.chat_data.get('latest_record') is not None:
+                msg += f" (press '.' to use {context.chat_data.get('latest_record').rep_sec})"
+            await update.message.reply_text(msg)
+            return self.SET_REP_SEC
+        self.complete_exercise_log(update, context)
+        await context.update_queue.put(update)
+        return self._COLLECT_EXERCISE_RECORD
 
     async def set_exercise_variation(self, update: Update, context: CallbackContext):
         self.logger.log("set_exercise_variation()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
-        if user_choice.strip() == '.':
+        if neutralize_str(user_choice) == 'same':
             variation = context.chat_data.get('latest_record').variation
+            keyboard_options = ["same"]
         else:
             variation = user_choice.strip()
+            keyboard_options = []
+        keyboard_options = self.google_sheets_client.get_exercise_variation_level_list(self.sessions[user_id].current_exercise.type, variation) + keyboard_options
         self.sessions[user_id].current_exercise.variation = variation
-        if self.sessions[user_id].current_exercise.level is None:
-            await update.message.reply_text('Choose level',
-                                            reply_markup=ReplyKeyboardMarkup(
-                                                [self.google_sheets_client.get_exercise_variation_level_list(self.sessions[user_id].current_exercise, variation)],
-                                                one_time_keyboard=True))
+        await update.message.reply_text('Choose level',
+                                        reply_markup=ReplyKeyboardMarkup(
+                                            [keyboard_options],
+                                            one_time_keyboard=True))
 
-            return self.SET_EXERCISE_LEVEL
+        return self.SET_EXERCISE_LEVEL
+
+    def complete_exercise_log(self, update: Update, context: CallbackContext):
+        user_id = update.message.from_user.id
         context.chat_data['ex_id'] += 1
-        return self.collect_exercise_record
+        self.sessions[user_id].current_exercise.time = time_for_exer_log()
 
     async def end_session(self, update, context: CallbackContext):
         self.logger.log("end_session()")
@@ -410,12 +422,7 @@ class TelegramBot:
     async def choose_exercise_variation(self, update, context: CallbackContext):
         exercise_type = update.message.text
         context.chat_data.set('exercise_type', exercise_type)
-        exercise_variations = self.google_sheets_client.get_exercise_variation_list(exercise_type)
 
-        await update.message.reply_text('Choose variation',
-                                        reply_markup=ReplyKeyboardMarkup(
-                                            [exercise_variations],
-                                            one_time_keyboard=True))
 
     async def choose_exercise_level(self, update, context: CallbackContext):
         exercise_variation = update.message.text

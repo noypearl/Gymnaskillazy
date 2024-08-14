@@ -14,17 +14,17 @@ class ExerciseUnitLog(Model):
         self.id = next(self.id_iter)
         self.type = type
         self.rep_sec = rep_sec
-        self.time = time_for_exer_log() if None else time
+        self.time = time_for_exer_log() if time is None else time
         self.variation = variation
         self.level = level
-        self.notes = [] if None else notes
+        self.notes = [] if notes is None else notes
 
 class WorkoutLog(Model):
     def __init__(self, date=None):
         self.exercises = []
         self.custom_exercises = []
         self.type = None
-        self.date = date_for_exer_log() if None else date
+        self.date = date_for_exer_log() if date is None else date
 
     def exercise_count(self):
         return len(self.exercises)
