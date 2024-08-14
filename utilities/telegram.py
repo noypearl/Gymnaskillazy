@@ -1,6 +1,6 @@
-from telegram.ext.filters import MessageFilter
+class InputValidation:
 
-class NumericOrDotFilter(MessageFilter):
-    def filter(self, message):
-        msg = message.text.strip()
+    @staticmethod
+    def digit_or_dot(message: str):
+        msg = message.strip()
         return msg.isdigit() or msg == '.'

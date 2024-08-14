@@ -29,9 +29,6 @@ def neutralize_str(s: str) -> str:
         return s.strip().lower()
     return s
 
-def filter_cell_list_by_value(l: list, v: str):
-    return [cell for cell in l if neutralize_str(cell.value) == v]
-
 def get_most_recent_record(l: list):
     return max(l, key=lambda cell: cell.row)
 
@@ -39,3 +36,8 @@ def filter_out_empty_members(l: list, header=True) -> list:
     result = [i for i in l if not is_empty(i)]
     return result[1:] if header else result
 
+def list_to_str(l: list) -> str:
+    return ", ".join(l)
+
+def min_exercise_id(l):
+    return min(l, key=lambda x: x.id)

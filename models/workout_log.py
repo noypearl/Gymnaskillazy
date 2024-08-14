@@ -1,6 +1,4 @@
 import itertools
-from dataclasses import dataclass, field
-from typing import List
 
 from models import Model
 from utilities.collections import is_empty
@@ -29,8 +27,18 @@ class WorkoutLog(Model):
     def exercise_count(self):
         return len(self.exercises)
 
+    def min_exercise_id(self):
+        if self.exercise_count() < 1:
+            raise ValueError("No exercises were created for this session")
+        return min(self.exercises, key=lambda exercise: exercise.id).id
+
+    def max_exercise_id(self):
+        if self.exercise_count() < 1:
+            raise ValueError("No exercises were created for this session")
+        return max(self.exercises, key=lambda exercise: exercise.id).id
+
     def populate_exercises(self, exercise_name_list):
-        self.exercises = [ExerciseUnitLog(type=ex_name) for ex_name in exercise_name_list]
+        self.exercises = [ExerciseUnitLog(type=ex_name) for ex_name in exercise_name_list for _ in range(3)]
 
     def last_exercise_of_same_type(self, exercise: ExerciseUnitLog):
         all_exercise_logs_of_type = self.get_all_exercise_logs_by_exercise_type(exercise.type)

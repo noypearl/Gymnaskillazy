@@ -1,7 +1,7 @@
 import json
-import ast
-from datetime import datetime
-from typing import Union
+
+from utilities.filesystem_client import FilesystemClient
+from utilities.time import now_for_logs
 
 
 class LoggerClient:
@@ -9,9 +9,8 @@ class LoggerClient:
         self.output_file_path = output_file_path
 
     def log(self, message):
-        with open(self.output_file_path, 'a') as f:
-            f.write(f"[{datetime.now().isoformat()}] {message}\n")
-
-    def log_json(self, message: Union[str,list,dict]):
-        serialized = json.dumps(message)
-        self.log(serialized)
+        return  # because IO disturbs the async
+        if not isinstance(message, str):
+            message = json.dumps(message)
+        message = f"[{now_for_logs()}] {message}\n"
+        FilesystemClient.write_to_file(self.output_file_path, message)
