@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import requests
 from telegram import Update, ReplyKeyboardMarkup
@@ -7,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from models.session import UserSession
 from utilities.collections import neutralize_str
-from utilities.constants import EXPLANATIONS_TEXT
+from utilities.constants import EXPLANATIONS_TEXT, SAME_OR_DIFFERENT
 from utilities.google_sheets_client import GoogleSheetsClient
 from utilities.telegram import InputValidation
 from utilities.time import time_for_exer_log
@@ -65,15 +64,11 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("cancel", self.cancel))
         self.application.add_handler(CommandHandler("config", self.config))
 
-    async def start(self, update: Update, context: CallbackContext) -> Optional[int]:
+    async def start(self, update: Update, context: CallbackContext) -> None:
         self.logger.log("start()")
         user_id = update.message.from_user.id
         print(f" user_id: {user_id}; self.telegram_user_id: {self.telegram_user_id}")
-        if user_id != self.telegram_user_id:
-            print(f"user id is {user_id} instead of {self.telegram_user_id}")
-            await update.message.reply_text("Access denied. You are not authorized to use this bot.")
-            return
-        msg = "Welcome to the Gymnaskillz notepad bot!\n" + \
+        msg = "Welcome to the Gymnaskillz logbook bot!\n" + \
             "To get started, you first have to add your Email address using /config\n" + \
             "If you already did, hit /start to log a workout! 💪"
         await update.message.reply_text(msg)
@@ -104,6 +99,7 @@ class TelegramBot:
             msg += f"\n{setting}: {value}"
         msg += f"\nWhat would you like to edit?"
         keyboard_options = list(user_config.keys()) + ["all good"]
+        context.chat_data['prev_step_options'] = keyboard_options
         await update.message.reply_text(msg,
                                         reply_markup=ReplyKeyboardMarkup(
                                             [keyboard_options],
@@ -114,14 +110,20 @@ class TelegramBot:
         self.logger.log("edit_settings()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
+        user_config = context.chat_data.get('user_config')
+        expected_values = context.chat_data['prev_step_options']
+        if not InputValidation.accepted_value(user_choice, expected_values):
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Invalid choice.")
+            await context.update_queue.put(update)
+            return self._CONFIG
         if neutralize_str(user_choice) == "all good":
             await context.update_queue.put(update)
             return self.START
-        user_config = context.chat_data.get('user_config')
         context.chat_data['user_config_pointer'] = user_choice
-        await update.message.reply_text(
-            f"What should the new value be? (press '.' for {user_config.get(user_choice)})"
-        )
+        msg = "What should the new value be?"
+        if user_config.get(user_choice) is not None:
+            msg += f" (press '.' for {user_config.get(user_choice)})"
+        await update.message.reply_text(msg)
         return self.SUBMIT_SETTINGS
 
     async def submit_settings(self, update: Update, context: CallbackContext) -> int:
@@ -177,14 +179,16 @@ class TelegramBot:
             await update.message.reply_text(
                 f'{latest_record.type}\nUse same definition as last time?\n\t\t{latest_record.variation} | {latest_record.level} | {latest_record.rep_sec}',
                 reply_markup=ReplyKeyboardMarkup(
-                    [['different', 'same']],
+                    [SAME_OR_DIFFERENT],
                     one_time_keyboard=True))
             return self.USE_PREVIOUS_EXERCISE_RECORD
         else:
+            keyboard_options = self.google_sheets_client.get_exercise_variation_list(self.sessions[user_id].current_exercise.type)
+            context.chat_data['prev_step_options'] = keyboard_options
             await update.message.reply_text(
                 f'This is your first time logging {self.sessions[user_id].current_exercise.type}!\nChoose a variation:',
                 reply_markup=ReplyKeyboardMarkup(
-                    [self.google_sheets_client.get_exercise_variation_list(self.sessions[user_id].current_exercise.type)],
+                    [keyboard_options],
                     one_time_keyboard=True))
             return self.SET_EXERCISE_VARIATION
 
@@ -192,6 +196,9 @@ class TelegramBot:
         self.logger.log("use_previous_exercise_record()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
+        if not InputValidation.accepted_value(user_choice, SAME_OR_DIFFERENT):
+            await update.message.reply_text(f'Invalid choice.')
+            return self.USE_PREVIOUS_EXERCISE_RECORD
         latest_record = context.chat_data.get('latest_record')
         if user_choice == 'same':
             self.sessions[user_id].current_exercise.variation=latest_record.variation
@@ -212,7 +219,7 @@ class TelegramBot:
         user_id = update.message.from_user.id
         # possible choices: '.' / <rep_sec>
         user_choice = update.message.text
-        if InputValidation.digit_or_dot(user_choice) is False:
+        if not InputValidation.digit_or_dot(user_choice):
             await update.message.reply_text("Please enter either a numerical value or a dot")
             return self.SET_REP_SEC
         latest_record = context.chat_data.get('latest_record')
@@ -229,6 +236,7 @@ class TelegramBot:
             keyboard_options = self.google_sheets_client.get_exercise_variation_list(self.sessions[user_id].current_exercise.type)
             if latest_record is not None:
                 keyboard_options += ["same"]
+            context.chat_data['prev_step_options'] = keyboard_options
             await update.message.reply_text('Choose variation',
                                             reply_markup=ReplyKeyboardMarkup(
                                                 [keyboard_options],
@@ -242,6 +250,14 @@ class TelegramBot:
         self.logger.log("set_exercise_level()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
+        if not InputValidation.accepted_value(user_choice, context.chat_data['prev_step_options']):
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Invalid choice.")
+            await update.message.reply_text('Choose level',
+                                            reply_markup=ReplyKeyboardMarkup(
+                                                [context.chat_data['prev_step_options']],
+                                                one_time_keyboard=True))
+
+            return self.SET_EXERCISE_LEVEL
         if neutralize_str(user_choice) == 'same':
             level = context.chat_data.get('latest_record').level
         else:
@@ -261,6 +277,14 @@ class TelegramBot:
         self.logger.log("set_exercise_variation()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
+        if not InputValidation.accepted_value(user_choice, context.chat_data['prev_step_options']):
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Invalid choice.")
+            await update.message.reply_text('Choose variation',
+                                            reply_markup=ReplyKeyboardMarkup(
+                                                [context.chat_data['prev_step_options']],
+                                                one_time_keyboard=True))
+
+            return self.SET_EXERCISE_VARIATION
         if neutralize_str(user_choice) == 'same':
             variation = context.chat_data.get('latest_record').variation
             keyboard_options = ["same"]
@@ -268,6 +292,7 @@ class TelegramBot:
             variation = user_choice.strip()
             keyboard_options = []
         keyboard_options = self.google_sheets_client.get_exercise_variation_level_list(self.sessions[user_id].current_exercise.type, variation) + keyboard_options
+        context.chat_data['prev_step_options'] = keyboard_options
         self.sessions[user_id].current_exercise.variation = variation
         await update.message.reply_text('Choose level',
                                         reply_markup=ReplyKeyboardMarkup(
@@ -283,7 +308,8 @@ class TelegramBot:
 
     async def end_session(self, update, context: CallbackContext):
         self.logger.log("end_session()")
-        # store the session in the user's db
+        # TODO: Display log, ask if they want to edit
+        # store the session in the user's DB
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text=f"Logging your workout...")
         user_id = update.message.from_user.id
@@ -293,6 +319,7 @@ class TelegramBot:
                                        text=f"Workout session logged successfully!")
 
         self.sessions.pop(user_id)
+        context.chat_data.clear()
         return ConversationHandler.END
 
     async def prev_exercise(self, update: Update, context: CallbackContext) -> int:
