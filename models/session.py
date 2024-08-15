@@ -5,6 +5,7 @@ class UserSession:
     def __init__(self, user_id):
         self.user_id = user_id
         self.spreadsheet_doc = None
+        self.user_config = {}
         self.workout_log = WorkoutLog()
         self.current_exercise = None
 

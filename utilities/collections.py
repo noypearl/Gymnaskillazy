@@ -29,6 +29,9 @@ def neutralize_str(s: str) -> str:
         return s.strip().lower()
     return s
 
+def neutralize_list(l: list) -> list:
+    return [neutralize_str(x) for x in l]
+
 def get_most_recent_record(l: list):
     return max(l, key=lambda cell: cell.row)
 

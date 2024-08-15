@@ -7,6 +7,7 @@ EXERCISE_SHEET = "Exercise List"
 EXERCISE_ID_COL = "Exercise ID"
 CURRENT_COL = "Current"
 USERS_SHEET = "Users"
+PERMITTED_USERS = "Premitted Email Addresses"
 LOG_SHEET = "Full Workout Log"
 USER_DATA_SHEET = "User Data"
 

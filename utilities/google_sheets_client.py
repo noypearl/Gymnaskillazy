@@ -6,8 +6,9 @@ from oauth2client.service_account import ServiceAccountCredentials
 from models.session import UserSession
 from models.workout_log import WorkoutLog, ExerciseUnitLog
 from utilities.collections import filter_list_of_dicts_by_kv, uniquify, get_all_values_of_k, get_most_recent_record, \
-    filter_out_empty_members, neutralize_str, list_to_str
-from utilities.constants import USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, EXERCISE_ID_COL, LOG_SHEET
+    filter_out_empty_members, neutralize_str, list_to_str, neutralize_list
+from utilities.constants import USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, EXERCISE_ID_COL, LOG_SHEET, PERMITTED_USERS, \
+    USER_DATA_SHEET
 
 
 class GoogleSheetsClient:
@@ -17,6 +18,7 @@ class GoogleSheetsClient:
         self.main_doc = self.get_doc(main_sheet_id)
         self.user_template_doc = self.get_doc(user_template_sheet_id)
         self.user_log_folder_id = user_log_folder_id
+        self.user_docs = {}
 
     def get_gcloud_connection(self):
         scope = [
@@ -26,6 +28,11 @@ class GoogleSheetsClient:
         ]
         credentials = ServiceAccountCredentials.from_json_keyfile_name(self.credentials_file, scope)
         return gspread.authorize(credentials)
+
+    def get_permitted_user_emails(self):
+        users_sheet = self.get_main_doc_sheet(USERS_SHEET)
+        permitted_users_column_number = self.get_column_number(users_sheet, PERMITTED_USERS)
+        return neutralize_list(users_sheet.col_values(permitted_users_column_number)[1:])
 
     def get_doc(self, sheet_id):
         doc = self.client.open_by_key(sheet_id)
@@ -115,7 +122,7 @@ class GoogleSheetsClient:
         users_sheet.append_row([user_id, new_user_doc.id])
         return new_user_doc
 
-    def get_user_sheet_doc_id_by_user_id(self, user_id):
+    def get_user_doc_id_by_user_id(self, user_id):
         users_sheet = self.main_doc.worksheet(USERS_SHEET)
         user_id_str = str(user_id)
         user_id_cell = users_sheet.find(user_id_str)
@@ -128,16 +135,19 @@ class GoogleSheetsClient:
         return user_sheet_id_cell.value
 
     def get_user_doc_by_user_id(self, user_id):
-        user_doc_id = self.get_user_sheet_doc_id_by_user_id(user_id)
+        if user_id in self.user_docs:
+            return self.user_docs[user_id]
+        user_doc_id = self.get_user_doc_id_by_user_id(user_id)
+        self.user_docs[user_id] = user_doc_id
         return self.get_doc(user_doc_id)
 
     def update_settings(self, user_doc, setting_name, new_value):
-        user_data_sheet = user_doc.worksheet('User Data')
-        setting_location = user_data_sheet.find(setting_name, in_column=1)
+        user_data_sheet = user_doc.worksheet(USER_DATA_SHEET)
+        setting_location = user_data_sheet.find(setting_name, in_column=1, case_sensitive=False)
         user_data_sheet.update_cell(setting_location.row, setting_location.col+1, new_value)
 
     def log_workout(self, session: UserSession):
-        user_sheet_id = self.get_user_sheet_doc_id_by_user_id(session.user_id)
+        user_sheet_id = self.get_user_doc_id_by_user_id(session.user_id)
         user_sheet_doc = self.get_doc(user_sheet_id)
         if user_sheet_doc is None:
             user_sheet_doc = self.create_user_sheet_doc(session.user_id)
