@@ -1,6 +1,6 @@
 import itertools
 
-from models import Model
+from models import Model, StorageObject
 from utilities.collections import is_empty
 from utilities.time import date_for_exer_log, time_for_exer_log
 
@@ -10,10 +10,11 @@ class ExerciseOrder:
     REGISTRATION = 111222
     CUSTOM = 0
 
-class ExerciseUnitLog(Model):
+class ExerciseUnitLog(Model, StorageObject):
     id_iter = itertools.count()
 
     def __init__(self, type: str, time=None, variation=None, level=None, rep_sec=None, notes=None):
+        super().__init__()
         self.id = next(self.id_iter)
         self.type = type
         self.rep_sec = rep_sec
@@ -22,8 +23,9 @@ class ExerciseUnitLog(Model):
         self.level = level
         self.notes = [] if notes is None else notes
 
-class WorkoutLog(Model):
+class WorkoutLog(Model, StorageObject):
     def __init__(self, date=None):
+        super().__init__()
         self.exercises = []
         self.custom_exercises = []
         self.type = None
@@ -60,7 +62,7 @@ class WorkoutLog(Model):
                 for i in range(0, len(exercise_name_list), superset_len):
                     for _ in range(superset_rep):
                         result.extend(ExerciseUnitLog(exercise_name_list[j]) for j in range(i, i + superset_len))
-                self.exercises = result
+                self.set("exercises", result)
 
     def last_exercise_of_same_type(self, exercise: ExerciseUnitLog):
         all_exercise_logs_of_type = self.get_all_exercise_logs_by_exercise_type(exercise.type)
