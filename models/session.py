@@ -1,4 +1,4 @@
-from models.workout_log import WorkoutLog
+from models.workout_log import WorkoutLog, ExerciseOrder
 
 
 class UserSession:
@@ -7,6 +7,8 @@ class UserSession:
         self.spreadsheet_doc = None
         self.user_config = {}
         self.workout_log = WorkoutLog()
+        self.previous_exercise_records = {}
+        self.exercise_order = ExerciseOrder.DEFAULT
         self.current_exercise = None
 
     def set_spreadsheet_doc(self, spreadsheet_doc):

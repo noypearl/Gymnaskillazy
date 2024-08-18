@@ -7,8 +7,8 @@ from models.session import UserSession
 from models.workout_log import WorkoutLog, ExerciseUnitLog
 from utilities.collections import filter_list_of_dicts_by_kv, uniquify, get_all_values_of_k, get_most_recent_record, \
     filter_out_empty_members, neutralize_str, list_to_str, neutralize_list
-from utilities.constants import USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, EXERCISE_ID_COL, LOG_SHEET, PERMITTED_USERS, \
-    USER_DATA_SHEET
+from utilities.constants import USERS_SHEET, CURRENT_COL, EXERCISE_SHEET, EXERCISE_ID_COL, PERMITTED_USERS, \
+    USER_DATA_SHEET, USER_LOG_SHEET
 
 
 class GoogleSheetsClient:
@@ -45,7 +45,7 @@ class GoogleSheetsClient:
 
     def get_user_config(self, user_id):
         user_sheet_doc = self.get_user_doc_by_user_id(user_id)
-        user_data_sheet = user_sheet_doc.worksheet('User Data')
+        user_data_sheet = user_sheet_doc.worksheet(USER_DATA_SHEET)
         headers = [neutralize_str(h) for h in user_data_sheet.col_values(1)]
         col = user_data_sheet.col_values(2)
         result = {}
@@ -64,16 +64,16 @@ class GoogleSheetsClient:
         exercise_list = get_all_values_of_k(filtered_exercises, EXERCISE_ID_COL)
         return exercise_list
 
-    def get_exercise_last_log(self, user_id: int, exercise: ExerciseUnitLog) -> Optional[ExerciseUnitLog]:
+    def get_exercise_last_log(self, user_id: int, exercise_type: str) -> Optional[ExerciseUnitLog]:
         user_sheet_doc = self.get_user_doc_by_user_id(user_id)
         if user_sheet_doc is None:
             return
-        log_sheet = user_sheet_doc.worksheet("Full Workout Log")
+        log_sheet = user_sheet_doc.worksheet(USER_LOG_SHEET)
         exercise_column_number = self.get_column_number(log_sheet, "Exercise")
-        existing_log_for_exercise_type = log_sheet.find(exercise.type, in_column=exercise_column_number)
+        existing_log_for_exercise_type = log_sheet.find(exercise_type, in_column=exercise_column_number)
         if existing_log_for_exercise_type is None:
             return
-        past_logs_for_exercise = log_sheet.findall(query=exercise.type, in_column=exercise_column_number)
+        past_logs_for_exercise = log_sheet.findall(query=exercise_type, in_column=exercise_column_number)
         last_log_of_exercise = get_most_recent_record(past_logs_for_exercise)
         row_for_last_log = self.get_exercise_row_as_dict_by_cell(log_sheet, last_log_of_exercise.row)
         return ExerciseUnitLog(
@@ -138,8 +138,8 @@ class GoogleSheetsClient:
         if user_id in self.user_docs:
             return self.user_docs[user_id]
         user_doc_id = self.get_user_doc_id_by_user_id(user_id)
-        self.user_docs[user_id] = user_doc_id
-        return self.get_doc(user_doc_id)
+        self.user_docs[user_id] = self.get_doc(user_doc_id)
+        return self.user_docs[user_id]
 
     def update_settings(self, user_doc, setting_name, new_value):
         user_data_sheet = user_doc.worksheet(USER_DATA_SHEET)
@@ -151,7 +151,7 @@ class GoogleSheetsClient:
         user_sheet_doc = self.get_doc(user_sheet_id)
         if user_sheet_doc is None:
             user_sheet_doc = self.create_user_sheet_doc(session.user_id)
-        log_sheet = user_sheet_doc.worksheet(LOG_SHEET)
+        log_sheet = user_sheet_doc.worksheet(USER_LOG_SHEET)
         rows = self.parse_log_to_rows(session.workout_log)
         log_sheet.append_rows(rows)
 
