@@ -32,6 +32,10 @@ class WorkoutLog(Model):
     def exercise_count(self):
         return len(self.exercises)
 
+    def exercise_number_out_of_total(self, exercise: ExerciseUnitLog) -> tuple:
+        exercise_list_of_type = self.get_all_exercise_logs_by_exercise_type(exercise.type)
+        return next((i+1 for i, exer in enumerate(exercise_list_of_type) if exer.id == exercise.id), None), len(exercise_list_of_type)
+
     def min_exercise_id(self):
         if self.exercise_count() < 1:
             raise ValueError("No exercises were created for this session")

@@ -210,9 +210,11 @@ class TelegramBot:
         if latest_record is None:
             latest_record = self.sessions[user_id].workout_log.last_exercise_of_same_type(self.sessions[user_id].current_exercise)
         context.chat_data['latest_record'] = latest_record
+        count_of_total = self.sessions[user_id].workout_log.exercise_number_out_of_total(self.sessions[user_id].current_exercise)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Logging {self.sessions[user_id].current_exercise.type} ({count_of_total[0]}/{count_of_total[1]})")
         if latest_record is not None:
             await update.message.reply_text(
-                f'{latest_record.type}\nUse same definition as last time?\n\t\t{latest_record.variation} | {latest_record.level} | {latest_record.rep_sec}',
+                f'Use same definition as last time?\n\t\t{latest_record.variation} | {latest_record.level} | {latest_record.rep_sec}',
                 reply_markup=ReplyKeyboardMarkup(
                     [SAME_OR_DIFFERENT],
                     one_time_keyboard=True))
