@@ -6,7 +6,7 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 
 from models.session import UserSession
-from utilities.collections import neutralize_str
+from utilities.collections import neutralize_str, is_empty
 from utilities.constants import EXPLANATIONS_TEXT, SAME_OR_DIFFERENT
 from utilities.google_sheets_client import GoogleSheetsClient
 from utilities.telegram import InputValidation
@@ -30,7 +30,6 @@ class TelegramBot:
         self.secret_token = secret_token
         self.webhook_url = webhook_url
         self.telegram_user_id = int(telegram_user_id)
-        self.logger = logger  # !!TODO: remove pre deploy
 
         # Configure logging
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -43,6 +42,7 @@ class TelegramBot:
         conv_handler = ConversationHandler(
             entry_points=[
                 CommandHandler('start', self.start),
+                CommandHandler('log', self.new_session),
                 CommandHandler('config', self.config),
                 CommandHandler('unauthorized', self.unauthorized),
                 CommandHandler('cancel', self.cancel)
@@ -59,29 +59,29 @@ class TelegramBot:
                 self.SET_EXERCISE_LEVEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.set_exercise_level)],
                 self.SET_REP_SEC: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.set_exercise_rep_sec)],
             },
-            fallbacks=[CommandHandler('error', self.error)],
+            fallbacks=[
+                CommandHandler('error', self.error),
+                CommandHandler('unauthorized', self.unauthorized),
+            ],
         )
 
         self.application.add_handler(conv_handler)
         self.application.add_handler(CommandHandler("config", self.config))
-        self.application.add_handler(CommandHandler('log', self.unauthorized))
-        self.application.add_handler(CommandHandler('help', self.unauthorized))
-        self.application.add_handler(CommandHandler('cancel', self.unauthorized))
 
     async def unauthorized(self, update: Update, context: CallbackContext) -> int:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="You're not authorized to use this command")
         return ConversationHandler.END
 
     async def start(self, update: Update, context: CallbackContext) -> Optional[int]:
-        self.logger.log("start()")
+        print("start()")
         user_id = update.message.from_user.id
-        print(f" user_id: {user_id}; self.telegram_user_id: {self.telegram_user_id}")
-        user_config = self.google_sheets_client.get_user_config(user_id)
-        self.sessions[user_id].user_config = user_config
-        user_email = user_config.get('email')
-        print(user_email)
+        if user_id not in self.sessions:
+            self.prep_session(user_id)
+        if is_empty(self.sessions[user_id].user_config):
+            self.sessions[user_id].user_config = self.google_sheets_client.get_user_config(user_id)
+        self.sessions[user_id].user_config = self.sessions[user_id].user_config
+        user_email = self.sessions[user_id].user_config.get('email')
         permitted_emails = self.google_sheets_client.get_permitted_user_emails()
-        print(permitted_emails)
         if user_email is None:
             msg = "Set your email address in /config to get access to the bot"
             await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
@@ -91,17 +91,16 @@ class TelegramBot:
                   "If you're part of the Gymnaskillz family, contact Shahar for an invite."
             await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
             return ConversationHandler.END
-        else:
-            self.application.add_handler(CommandHandler('log', self.new_session))
-            self.application.add_handler(CommandHandler('help', self.help))
-            self.application.add_handler(CommandHandler('cancel', self.cancel))
-            msg = "Welcome to the Gymnaskillz logbook bot!\n" + \
-                "Hit /log to log a workout! 💪\n" + \
-                "Use /help to learn more"
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
+        self.application.add_handler(CommandHandler('log', self.new_session))
+        self.application.add_handler(CommandHandler('help', self.help))
+        self.application.add_handler(CommandHandler('cancel', self.cancel))
+        msg = "Welcome to the Gymnaskillz logbook bot!\n" + \
+            "Hit /log to log a workout! 💪\n" + \
+            "Use /help to learn more"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
     async def cancel(self, update: Update, context: CallbackContext) -> Optional[int]:
-        self.logger.log("cancel()")
+        print("cancel()")
         user_id = update.message.from_user.id
         if user_id in self.sessions:
             self.cleanup(update, context)
@@ -120,10 +119,13 @@ class TelegramBot:
             self.sessions[user_id].set_spreadsheet_doc(self.google_sheets_client.get_user_doc_by_user_id(user_id))
 
     async def config(self, update: Update, context: CallbackContext) -> int:
-        self.logger.log("config()")
+        print("config()")
         user_id = update.message.from_user.id
-        self.prep_session(user_id)
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Loading your settings...")
+        if user_id not in self.sessions:
+            self.prep_session(user_id)
+        if is_empty(self.sessions[user_id].user_config):
+            self.sessions[user_id].user_config = self.google_sheets_client.get_user_config(user_id)
         user_config = self.sessions[user_id].user_config
         msg = "Your settings:"
         for setting, value in user_config.items():
@@ -138,7 +140,7 @@ class TelegramBot:
         return self.EDIT_SETTINGS
 
     async def edit_settings(self, update: Update, context: CallbackContext) -> int:
-        self.logger.log("edit_settings()")
+        print("edit_settings()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
         user_config = self.sessions[user_id].user_config
@@ -158,7 +160,7 @@ class TelegramBot:
         return self.SUBMIT_SETTINGS
 
     async def submit_settings(self, update: Update, context: CallbackContext) -> int:
-        self.logger.log("submit_settings()")
+        print("submit_settings()")
         user_id = update.message.from_user.id
         user_choice = neutralize_str(update.message.text)
         if neutralize_str(user_choice) == ".":
@@ -173,9 +175,8 @@ class TelegramBot:
         return self._CONFIG
 
     async def new_session(self, update: Update, context: CallbackContext) -> int:
-        self.logger.log("new_session()")
+        print("new_session()")
         user_id = update.message.from_user.id
-        print(f"User ID: {user_id}")
         self.prep_session(user_id)
         await update.message.reply_text('What type of workout today, champ?',
                                         reply_markup=ReplyKeyboardMarkup([self.google_sheets_client.get_workout_type_list()],
@@ -183,28 +184,31 @@ class TelegramBot:
         return self.COLLECT_EXERCISE_RECORDS
 
     async def collect_exercise_records(self, update, context) -> int:
-        self.logger.log("collect_exercise_records()")
+        print("collect_exercise_records()")
         user_id = update.message.from_user.id
         workout_type = update.message.text
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Loading your data...")
         self.sessions[user_id].workout_log.type = workout_type
         exercise_list = self.google_sheets_client.get_exercise_list_by_type(self.sessions[user_id].workout_log.type)
+        for exercise_type in exercise_list:
+            self.sessions[user_id].previous_exercise_records[exercise_type] = self.google_sheets_client.get_exercise_last_log(user_id, exercise_type)
         self.sessions[user_id].workout_log.populate_exercises(exercise_list)
-        context.chat_data['ex_id'] = self.sessions[user_id].workout_log.min_exercise_id()
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Loading your data...")
+        print(self.sessions[user_id].workout_log.exercises)
+        context.chat_data['ex_id'] = 0
         await context.update_queue.put(update)
         return self._COLLECT_EXERCISE_RECORD
 
     async def collect_exercise_record(self, update, context):
-        self.logger.log("collect_exercise_record()")
+        print("collect_exercise_record()")
         user_id = update.message.from_user.id
         curr_ex_id = context.chat_data.get('ex_id')
-        if curr_ex_id > self.sessions[user_id].workout_log.max_exercise_id():
+        if curr_ex_id >= self.sessions[user_id].workout_log.exercise_count():
             return await self.end_session(update, context)
-        self.sessions[user_id].current_exercise = self.sessions[user_id].workout_log.get_exercise_by_id(curr_ex_id)
+        self.sessions[user_id].current_exercise = self.sessions[user_id].workout_log.exercises[curr_ex_id]
         # check if any previous record
-        latest_record = self.sessions[user_id].workout_log.last_exercise_of_same_type(self.sessions[user_id].current_exercise)
+        latest_record = self.sessions[user_id].previous_exercise_records.get(self.sessions[user_id].current_exercise.type)
         if latest_record is None:
-            latest_record = self.google_sheets_client.get_exercise_last_log(user_id, self.sessions[user_id].current_exercise)
+            latest_record = self.sessions[user_id].workout_log.last_exercise_of_same_type(self.sessions[user_id].current_exercise)
         context.chat_data['latest_record'] = latest_record
         if latest_record is not None:
             await update.message.reply_text(
@@ -224,7 +228,7 @@ class TelegramBot:
             return self.SET_EXERCISE_VARIATION
 
     async def use_previous_exercise_record(self, update: Update, context: CallbackContext):
-        self.logger.log("use_previous_exercise_record()")
+        print("use_previous_exercise_record()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
         if not InputValidation.accepted_value(user_choice, SAME_OR_DIFFERENT):
@@ -246,7 +250,7 @@ class TelegramBot:
             return self.SET_REP_SEC
 
     async def set_exercise_rep_sec(self, update: Update, context: CallbackContext):
-        self.logger.log("set_exercise_rep_sec()")
+        print("set_exercise_rep_sec()")
         user_id = update.message.from_user.id
         # possible choices: '.' / <rep_sec>
         user_choice = update.message.text
@@ -278,7 +282,7 @@ class TelegramBot:
         return self._COLLECT_EXERCISE_RECORD
 
     async def set_exercise_level(self, update: Update, context: CallbackContext):
-        self.logger.log("set_exercise_level()")
+        print("set_exercise_level()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
         if not InputValidation.accepted_value(user_choice, context.chat_data['prev_step_options']):
@@ -305,7 +309,7 @@ class TelegramBot:
         return self._COLLECT_EXERCISE_RECORD
 
     async def set_exercise_variation(self, update: Update, context: CallbackContext):
-        self.logger.log("set_exercise_variation()")
+        print("set_exercise_variation()")
         user_id = update.message.from_user.id
         user_choice = update.message.text
         if not InputValidation.accepted_value(user_choice, context.chat_data['prev_step_options']):
@@ -333,12 +337,13 @@ class TelegramBot:
         return self.SET_EXERCISE_LEVEL
 
     def complete_exercise_log(self, update: Update, context: CallbackContext):
+        print("complete_exercise_log()")
         user_id = update.message.from_user.id
         context.chat_data['ex_id'] += 1
         self.sessions[user_id].current_exercise.time = time_for_exer_log()
 
     async def end_session(self, update, context: CallbackContext):
-        self.logger.log("end_session()")
+        print("end_session()")
         # TODO: Display log, ask if they want to edit
         # store the session in the user's DB
         await context.bot.send_message(chat_id=update.effective_chat.id,
@@ -408,6 +413,7 @@ class TelegramBot:
             print("Webhook set successfully")
 
     def cleanup(self, update, context):
+        print("cleanup()")
         user_id = update.message.from_user.id
         if user_id in self.sessions:
             self.sessions.pop(user_id)
@@ -416,4 +422,4 @@ class TelegramBot:
         context.chat_data.clear()
 
     async def error(self, update: Update, context: CallbackContext):
-        print("Whoa! Something happened")
+        print("error()")
