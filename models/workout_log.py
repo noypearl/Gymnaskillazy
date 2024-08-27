@@ -67,8 +67,9 @@ class WorkoutLog(Model, StorageObject):
     def last_exercise_of_same_type(self, exercise: ExerciseUnitLog):
         all_exercise_logs_of_type = self.get_all_exercise_logs_by_exercise_type(exercise.type)
         if is_empty(all_exercise_logs_of_type): return
-        if min([ex.id for ex in all_exercise_logs_of_type]) < exercise.id:
-            return self.get_exercise_by_id(exercise.id - 1)
+        exercise_min_id = min([ex.id for ex in all_exercise_logs_of_type])
+        if exercise_min_id < exercise.id:
+            return self.get_exercise_by_id(exercise_min_id)
 
     def get_all_exercise_logs_by_exercise_type(self, exercise_name):
         return [ex for ex in self.exercises if ex.type == exercise_name]

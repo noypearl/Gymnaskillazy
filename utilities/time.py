@@ -8,3 +8,6 @@ def date_for_exer_log():
 
 def now_for_logs():
     return datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+
+def is_even_month():
+    return datetime.datetime.now().month % 2 == 0

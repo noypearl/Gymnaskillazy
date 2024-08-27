@@ -1,10 +1,24 @@
 from datetime import datetime, timedelta
 
+from utilities.collections import is_empty
+
 
 class Storage:
     def __init__(self):
         self.users = {}
-        self.month_exercises = {}
+        self._month_exercises = {}
+        self._project_definitions = {}
+
+    @property
+    def month_exercises(self):
+        if self._month_exercises is None:
+            # populate
+            pass
+        return self._month_exercises
+
+    @month_exercises.setter
+    def month_exercises(self, month_exercises):
+        self._month_exercises = month_exercises
 
     def get_session(self, user_id):
         return self.users[user_id].session

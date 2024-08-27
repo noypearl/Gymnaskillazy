@@ -2,17 +2,25 @@
 
 GENERAL_SHEET = "General"
 TRAINERS_COL = "Trainers"
-QUESTIONS_COL = "Questions"
-EXERCISE_SHEET = "Exercise List"
-EXERCISE_ID_COL = "Exercise ID"
-CURRENT_COL = "Current"
+QUESTIONS_COL = "Questions"  # maybe redundant
+PROJECT_SHEET = "Project List"
+PROJECT_ID_COL = "Project ID"
+EVEN_MONTH_COL = "Even Months"
+ODD_MONTH_COL = "Odd Months"
 USERS_SHEET = "Users"
-PERMITTED_USERS = "Premitted Email Addresses"
+PERMITTED_USERS_COL = "Permitted Email Addresses"
 USER_LOG_SHEET = "Full Workout Log"
 USER_DATA_SHEET = "User Data"
+EXECUTION_DIFFICULTY_HEADER = "Execution/Difficulty"
+
+# PROJECT DEFINITION
+PROJECT = "Project"
+PROJECT_COL = "Project"
+EXECUTION = "Execution"
+DIFFICULTY = "Difficulty"
 
 # MENU OPTIONS
-SAME_OR_DIFFERENT = ["different", "same"]
+SAME_OR_DIFFERENT = ["change execution", "change difficulty", "change rep/sec", "same"]
 
 
 # TODO: ADD COMMANDS (END,START,SKIP...)
