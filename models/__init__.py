@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 
 
@@ -9,18 +9,25 @@ class Model:
 @dataclass
 class StorageObject:
     def __init__(self):
-        self.last_updated: datetime
-        self.set("last_updated", datetime.now())  # TODO move to time.py
+        self._attributes = {}
+        self._attributes["__last_updated"] = datetime.now()
 
     def __setattr__(self, name, value):
-        if hasattr(self, name):
-            raise AttributeError(f"Direct assignment of attributes is not allowed. Use setter methods. {self.__class__.__name__}.{name}")
-        else:
+        # Allow initialization of internal attributes
+        if name.startswith("_") or name not in self._attributes:
             super().__setattr__(name, value)
+        else:
+            # Route attribute assignment through the `set` method
+            self.set(name, value)
 
     def set_attr(self, name, value):
+        """Allow setting attributes bypassing __setattr__ restrictions."""
         super().__setattr__(name, value)
 
     def set(self, attribute_name, attribute_value):
-        self.set_attr(attribute_name, attribute_value)
-        self.set_attr("last_updated", datetime.now())  # TODO move to time.py
+        self._attributes[attribute_name] = attribute_value
+        self._attributes["__last_updated"] = datetime.now()  # TODO move to time.py
+
+    @property
+    def dict(self):
+        return {k:v for k,v in self._attributes.items() if not k.startswith("__")}

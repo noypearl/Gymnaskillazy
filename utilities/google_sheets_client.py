@@ -4,22 +4,25 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 from models.session import UserSession
-from models.workout_log import WorkoutLog, ExerciseUnitLog
-from utilities.collections import uniquify, get_most_recent_record, \
-    filter_out_empty_members, neutralize_str, list_to_str, neutralize_list, is_empty
-from utilities.constants import USERS_SHEET, PROJECT_SHEET, PERMITTED_USERS_COL, \
-    USER_DATA_SHEET, USER_LOG_SHEET, EVEN_MONTH_COL, ODD_MONTH_COL, EXECUTION_DIFFICULTY_HEADER, PROJECT_COL
+from models.workout_log import ExerciseUnitLog, WorkoutLog
+from utilities.collections import (filter_out_empty_members,
+                                   get_most_recent_record, is_empty,
+                                   list_to_str, neutralize_list,
+                                   neutralize_str, uniquify)
+from utilities.constants import (EVEN_MONTH_COL, EXECUTION_DIFFICULTY_HEADER,
+                                 ODD_MONTH_COL, PERMITTED_USERS_COL,
+                                 PROJECT_COL, PROJECT_SHEET, USER_DATA_SHEET,
+                                 USER_LOG_SHEET, USERS_SHEET)
 from utilities.time import is_even_month
 
 
 class GoogleSheetsClient:
-    def __init__(self, credentials_file, main_sheet_id, user_template_sheet_id, user_log_folder_id, storage):
+    def __init__(self, credentials_file, main_sheet_id, user_template_sheet_id, user_log_folder_id):
         self.credentials_file = credentials_file
         self.client = self.get_gcloud_connection()
         self.main_doc = self.get_doc(main_sheet_id)
         self.user_template_doc = self.get_doc(user_template_sheet_id)
         self.user_log_folder_id = user_log_folder_id
-        self.storage = storage
 
     def get_gcloud_connection(self):
         scope = [
@@ -31,9 +34,8 @@ class GoogleSheetsClient:
         return gspread.authorize(credentials)
 
     def get_permitted_user_emails(self):
-        users_sheet = self.get_main_doc_sheet(USERS_SHEET)
-        permitted_users_column_number = self.get_column_number(users_sheet, PERMITTED_USERS_COL)
-        return neutralize_list(users_sheet.col_values(permitted_users_column_number)[1:])
+        permitted_users_column_number = self.get_column_number(self.users_sheet, PERMITTED_USERS_COL)
+        return neutralize_list(self.users_sheet.col_values(permitted_users_column_number)[1:])
 
     def get_doc(self, sheet_id):
         doc = self.client.open_by_key(sheet_id)
@@ -43,6 +45,10 @@ class GoogleSheetsClient:
 
     def get_main_doc_sheet(self, sheet_name):
         return self.main_doc.worksheet(sheet_name)
+
+    @property
+    def users_sheet(self):
+        return self.get_main_doc_sheet(USERS_SHEET)
 
     def get_user_config(self, user_id):
         user_sheet_doc = self.get_user_doc_by_user_id(user_id)
@@ -58,7 +64,7 @@ class GoogleSheetsClient:
                 result[head] = col[h]
         return result
 
-    def get_exercise_last_log(self, user_id: int, exercise_type: str) -> Optional[ExerciseUnitLog]:
+    def get_project_last_log(self, user_id: int, exercise_type: str) -> Optional[ExerciseUnitLog]:
         user_sheet_doc = self.get_user_doc_by_user_id(user_id)
         if user_sheet_doc is None:
             return
@@ -79,36 +85,25 @@ class GoogleSheetsClient:
             notes=row_for_last_log.get("notes")
         )
 
-    def get_exercise_variation_list(self, exercise_type):
-        print("get_exercise_variation_list()")
-        if self.storage._project_definitions.get(exercise_type) is None:
-            exercise_sheet = self.main_doc.worksheet(exercise_type)
-            variation_column_number = self.get_column_number(exercise_sheet, EXECUTION_DIFFICULTY_HEADER)
-            execution_list = filter_out_empty_members(exercise_sheet.col_values(variation_column_number))[1:]
-            self.storage._project_definitions[exercise_type] = {}
-            for execution in execution_list:
-                self.storage._project_definitions[exercise_type][execution] = []
-        return list(self.storage._project_definitions[exercise_type].keys())
+    def get_project_execution_variation_list(self, project_type):
+        project_executions = {}
+        exercise_sheet = self.main_doc.worksheet(project_type)
+        variation_column_number = self.get_column_number(exercise_sheet, EXECUTION_DIFFICULTY_HEADER)
+        execution_list = filter_out_empty_members(exercise_sheet.col_values(variation_column_number))[1:]
+        for execution in execution_list:
+            project_executions[execution] = []
+        return project_executions
 
-    def get_exercise_variation_level_list(self, exercise_type, variation_name):
-        print("get_exercise_variation_level_list()")
-        if is_empty(self.storage._project_definitions.get(exercise_type)):
-            self.get_exercise_variation_list(exercise_type)
-        if is_empty(self.storage._project_definitions.get(exercise_type).get(variation_name)):
-            exercise_sheet = self.main_doc.worksheet(exercise_type)
-            variation_column_header = exercise_sheet.find(variation_name, in_row=1)
-            self.storage._project_definitions[exercise_type][variation_name] = filter_out_empty_members(exercise_sheet.col_values(variation_column_header.col))
-        return self.storage._project_definitions[exercise_type][variation_name]
-    def get_column_number(self, sheet, column_header: str):
+    
+    @staticmethod
+    def get_column_number(sheet, column_header: str):
         title_cell = sheet.find(column_header, case_sensitive=False)
         if title_cell is None:
             raise Exception(f"Column {column_header} not found")
         return title_cell.col
 
-    def load_month_exercises(self):
-        print("load_month_exercises()")
-        if not is_empty(self.storage.month_exercises):
-            return
+    def get_month_projects(self):
+        print("get_month_projects()")
         sheet = self.get_main_doc_sheet(PROJECT_SHEET)
         is_even = is_even_month()
         if is_even:
@@ -123,8 +118,8 @@ class GoogleSheetsClient:
             exercises[typ] = []
             exercise_rows.extend(sheet.findall(typ, in_column=column_number))
         for exercise_cell in exercise_rows:
-            exercises[exercise_cell.value].append(sheet.cell(exercise_cell.row, exercise_cell.col-1).value)
-        self.storage.month_exercises = exercises
+            exercises[exercise_cell.value].append(sheet.cell(exercise_cell.row, 1).value)
+        return exercises
 
     def create_user_sheet_doc(self, user_id):
         """
@@ -154,13 +149,9 @@ class GoogleSheetsClient:
         return user_sheet_id_cell.value
 
     def get_user_doc_by_user_id(self, user_id):
-        user_doc = self.storage.users[user_id].sheet_doc
-        if user_doc is None:
-            self.storage.users[user_id].set("sheet_doc", self.get_doc(self.get_user_doc_id_by_user_id(user_id)))
-            user_doc = self.storage.users[user_id].sheet_doc
-        return user_doc
+        return self.get_doc(self.get_user_doc_id_by_user_id(user_id))
 
-    def update_settings(self, user_doc, setting_name, new_value):
+    def update_user_config(self, user_doc, setting_name, new_value):
         user_data_sheet = user_doc.worksheet(USER_DATA_SHEET)
         setting_location = user_data_sheet.find(setting_name, in_column=1, case_sensitive=False)
         user_data_sheet.update_cell(setting_location.row, setting_location.col+1, new_value)

@@ -2,12 +2,13 @@ import logging
 from typing import Optional
 
 import requests
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+from telegram import ReplyKeyboardMarkup, Update
+from telegram.ext import (Application, CallbackContext, CommandHandler,
+                          ConversationHandler, MessageHandler, filters)
 
 from models.session import UserSession
 from models.user import User
-from utilities.collections import neutralize_str, is_empty
+from utilities.collections import is_empty, neutralize_str
 from utilities.constants import EXPLANATIONS_TEXT, SAME_OR_DIFFERENT
 from utilities.google_sheets_client import GoogleSheetsClient
 from utilities.storage import Storage
@@ -19,17 +20,9 @@ class TelegramBot:
     START, _CONFIG, EDIT_SETTINGS, SUBMIT_SETTINGS, COLLECT_EXERCISE_RECORDS, _COLLECT_EXERCISE_RECORD, USE_PREVIOUS_EXERCISE_RECORD, SET_EXERCISE_VARIATION, SET_EXERCISE_LEVEL, SET_REP_SEC= range(10)
 
     def __init__(self, telegram_token,
-                 google_sheets_credentials_file, google_main_sheet_doc_id, google_user_template_doc_id, google_user_log_folder_id,
                  webhook_url, secret_token, telegram_user_id, logger=None):
         self.storage = Storage()
         self.telegram_token = telegram_token
-        self.google_sheets_client = GoogleSheetsClient(
-            google_sheets_credentials_file,
-            google_main_sheet_doc_id,
-            google_user_template_doc_id,
-            google_user_log_folder_id,
-            self.storage
-        )
         self.secret_token = secret_token
         self.webhook_url = webhook_url
         self.telegram_user_id = int(telegram_user_id)
@@ -85,10 +78,8 @@ class TelegramBot:
         print(user_id)
         if user_id not in self.storage.users:
             self.prep_session(user_id)
-        if is_empty(self.storage.users[user_id].config):
-            self.storage.users[user_id].set("config", self.google_sheets_client.get_user_config(user_id))
-        user_email = self.storage.users[user_id].config.get('email')
-        permitted_emails = self.google_sheets_client.get_permitted_user_emails()
+        user_email = self.storage.users[user_id].config.email
+        permitted_emails = self.storage.permitted_email_list
         print(user_email)
         print(permitted_emails)
         if user_email is None:
@@ -125,11 +116,12 @@ class TelegramBot:
         print("prep_session()")
         if self.storage.users.get(user_id) is None:
             self.storage.users.update({user_id: User(user_id)})
-            self.storage.users[user_id].set("_session", UserSession(user_id))
-        if self.storage.users[user_id].sheet_doc is None:
-            self.google_sheets_client.get_user_doc_by_user_id(user_id)  # just to load
-        if is_empty(self.storage.month_exercises):
-            self.google_sheets_client.load_month_exercises()
+            self.storage.users[user_id].session = UserSession(user_id)
+            self.storage.load_user_data(user_id)
+        if self.storage.users[user_id] is None:
+            self.storage.get_user_doc(user_id)
+        if is_empty(self.storage.month_projects):
+            self.storage.month_projects
 
     async def config(self, update: Update, context: CallbackContext) -> int:
         print("config()")
@@ -137,14 +129,12 @@ class TelegramBot:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Loading your settings...")
         if user_id not in self.storage.users:
             self.prep_session(user_id)
-        if is_empty(self.storage.users[user_id].config):
-            self.storage.users[user_id].set("config", self.google_sheets_client.get_user_config(user_id))
         user_config = self.storage.users[user_id].config
         msg = "Your settings:"
-        for setting, value in user_config.items():
+        for setting, value in user_config.dict.items():
             msg += f"\n{setting}: {value}"
         msg += f"\nWhat would you like to edit?"
-        keyboard_options = list(user_config.keys()) + ["all good"]
+        keyboard_options = list(user_config.dict.keys()) + ["all good"]
         context.chat_data['prev_step_options'] = keyboard_options
         await update.message.reply_text(msg,
                                         reply_markup=ReplyKeyboardMarkup(
@@ -167,8 +157,8 @@ class TelegramBot:
             return self.START
         context.chat_data['user_config_pointer'] = user_choice
         msg = "What should the new value be?"
-        if user_config.get(user_choice) is not None:
-            msg += f" (press '.' for {user_config.get(user_choice)})"
+        if user_config.dict.get(user_choice) is not None:
+            msg += f" (press '.' for {user_config.dict.get(user_choice)})"
         await update.message.reply_text(msg)
         return self.SUBMIT_SETTINGS
 
@@ -181,8 +171,9 @@ class TelegramBot:
             return self._CONFIG
         user_config = self.storage.users[user_id].config
         setting_name = context.chat_data.get('user_config_pointer')
-        if user_choice != user_config.get(setting_name):
-            self.google_sheets_client.update_settings(self.storage.users[user_id].sheet_doc, setting_name, user_choice)
+        if user_choice != user_config.dict.get(setting_name):
+            self.storage.update_user_config(user_id, setting_name, user_choice)
+            # self.storage.users[user_id].config.update_config("setting_name", user_choice)
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Up to date!")
         await context.update_queue.put(update)
         return self._CONFIG
@@ -192,7 +183,7 @@ class TelegramBot:
         user_id = update.message.from_user.id
         self.prep_session(user_id)
         await update.message.reply_text('What type of workout today, champ?',
-                                        reply_markup=ReplyKeyboardMarkup([list(self.storage.month_exercises.keys())],
+                                        reply_markup=ReplyKeyboardMarkup([list(self.storage.month_projects.keys())],
                                                                          one_time_keyboard=True))
         return self.COLLECT_EXERCISE_RECORDS
 
@@ -202,10 +193,10 @@ class TelegramBot:
         workout_type = update.message.text
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Loading your data...")
         self.storage.users[user_id].session.workout_log.set("type", workout_type)
-        exercise_list = self.storage.month_exercises[workout_type]
+        exercise_list = self.storage.month_projects[workout_type]
         prev_exer_recs = {}
         for exercise_type in exercise_list:
-                prev_exer_recs[exercise_type] = self.google_sheets_client.get_exercise_last_log(user_id, exercise_type)
+                prev_exer_recs[exercise_type] = self.storage.get_project_last_log(user_id, exercise_type)
         self.storage.users[user_id].session.set("previous_exercise_records", prev_exer_recs)
         self.storage.users[user_id].session.workout_log.populate_exercises(exercise_list)
         context.chat_data['ex_id'] = 0
@@ -234,7 +225,8 @@ class TelegramBot:
                     one_time_keyboard=True))
             return self.USE_PREVIOUS_EXERCISE_RECORD
         else:
-            keyboard_options = self.google_sheets_client.get_exercise_variation_list(self.storage.users[user_id].session.current_exercise.type)
+            keyboard_options = list(self.storage.month_projects[self.storage.users[user_id].session.current_exercise.type].keys())
+            self.storage.get_executions_by_project(self.storage.users[user_id].session.current_exercise.type)
             context.chat_data['prev_step_options'] = keyboard_options
             await update.message.reply_text(
                 f'This is your first time logging {self.storage.users[user_id].session.current_exercise.type}!\nChoose a variation:',
@@ -284,7 +276,7 @@ class TelegramBot:
             rep_sec = user_choice.strip()
         self.storage.users[user_id].session.current_exercise.set("rep_sec", int(rep_sec))
         if self.storage.users[user_id].session.current_exercise.variation is None:
-            keyboard_options = self.google_sheets_client.get_exercise_variation_list(self.storage.users[user_id].session.current_exercise.type)
+            keyboard_options = self.storage.get_executions_by_project(self.storage.users[user_id].session.current_exercise.type)
             if latest_record is not None:
                 keyboard_options += ["same"]
             context.chat_data['prev_step_options'] = keyboard_options
@@ -342,7 +334,7 @@ class TelegramBot:
         else:
             variation = user_choice.strip()
             keyboard_options = []
-        keyboard_options = self.google_sheets_client.get_exercise_variation_level_list(self.storage.users[user_id].session.current_exercise.type, variation) + keyboard_options
+        keyboard_options = self.storage.month_projects[self.storage.users[user_id].session.current_exercise.type][variation] + keyboard_options
         context.chat_data['prev_step_options'] = keyboard_options
         self.storage.users[user_id].session.current_exercise.set("variation", variation)
         await update.message.reply_text('Choose level',
@@ -365,7 +357,7 @@ class TelegramBot:
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text=f"Logging your workout...")
         user_id = update.message.from_user.id
-        self.google_sheets_client.log_workout(self.storage.users[user_id].session)
+        self.storage.log_workout(self.storage.users[user_id].session)
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text=f"Workout session logged successfully!")
 

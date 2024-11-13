@@ -1,4 +1,4 @@
-from typing import List, Any, Hashable
+from typing import Any, Hashable, List
 
 
 def is_empty(col):

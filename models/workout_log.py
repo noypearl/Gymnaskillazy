@@ -15,13 +15,13 @@ class ExerciseUnitLog(Model, StorageObject):
 
     def __init__(self, type: str, time=None, variation=None, level=None, rep_sec=None, notes=None):
         super().__init__()
-        self.id = next(self.id_iter)
-        self.type = type
-        self.rep_sec = rep_sec
-        self.time = time_for_exer_log() if time is None else time
-        self.variation = variation
-        self.level = level
-        self.notes = [] if notes is None else notes
+        self.set("id", next(self.id_iter))
+        self.set("type", type)
+        self.set("rep_sec", rep_sec)
+        self.set("time", time_for_exer_log() if time is None else time)
+        self.set("variation", variation)
+        self.set("level", level)
+        self.set("notes", [] if notes is None else notes)
 
 class WorkoutLog(Model, StorageObject):
     def __init__(self, date=None):
